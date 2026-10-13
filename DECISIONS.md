@@ -72,11 +72,23 @@ Measured: CSV rows are 9,989 / 1,109 / 2,610 (train / dev / test) in 1,038 / 114
 Decision: keep both utterances in the text data and treat them as "no audio", the same as clips under 0.3 s.
 Tradeoff: fusion needs a text-only fallback for a handful of utterances.
 
-## 2026-10-12: Clips under 0.3 s get no audio features (pending approval)
+## 2026-10-12: Clips under 0.3 s get no audio features
 Context: measured on the 1660 Ti, WavLM-base-plus on a clip of 0.2 s or less allocates 9.9 GB and takes 2.5 to 4 s. From 0.25 s up it peaks at 387 to 557 MiB and takes 35 to 90 ms (15 s clip: 90 ms).
 Decision: `audio.min_seconds: 0.3`. Shorter clips are skipped by the caching script and listed in `skipped.txt`.
 Measured on the full dataset: 164 / 20 / 54 clips skipped in train / dev / test. Counting CSV rows, and adding the corrupt and the missing clip, 165 / 21 / 53 rows (about 2% of each split) have no audio features.
-Tradeoff: those utterances have no audio prediction, so fusion has to fall back to text for them. The live pipeline needs the same guard.
+Decided: these rows stay text-only. Fusion uses the text probabilities alone for them, and the audio-only row of the results table says how it treats them. We do not pad short clips with silence, because that would invent audio evidence the clip doesn't have.
+Tradeoff: those utterances have no audio prediction. The live pipeline needs the same guard.
+
+## 2026-10-12: Training scripts never read the test split
+Context: the plan had the text training script save logits for train, dev, and test.
+Decision: `train_text.py` loads train and dev only and saves dev logits. Test predictions are made inside `scripts/final_eval.py`, so the rule "only one script touches test" holds with no exceptions for labels. (The audio features for test clips were cached from the WAV files, without opening the test CSV.) We also don't save the text model's predictions on its own training data: nothing in the plan may be fit on them.
+Tradeoff: `final_eval.py` has to load both models instead of just reading saved files.
+
+## 2026-10-12: Text model input and training settings
+Context: RoBERTa-base fine-tune on a 6 GB card in fp32.
+Decision: the input is a sentence pair, `context` and `Speaker: utterance`, which RoBERTa's tokenizer joins as `<s> context </s></s> Speaker: utterance </s>`. Max 128 tokens; when a pair is too long the oldest context tokens are dropped first (measured: 2 of 9,989 train pairs and 0 dev pairs exceed 128; the longest utterance alone is 94 tokens). Batch 8 with gradient accumulation 2, lr 2e-5, 3 epochs, linear decay with no warmup, seed 0. The best epoch is chosen by dev weighted F1.
+Dependencies: none new. Evaluation metrics come from scikit-learn (`f1_score`, `confusion_matrix`) with all 7 labels passed explicitly, so a class nobody predicts counts as 0 in macro F1 instead of being dropped.
+Tradeoff: one seed only.
 
 ## 2026-10-01: Class weights 1/sqrt(n) (pending approval)
 Context: neutral is close to half of MELD; fear and disgust are a few percent each.

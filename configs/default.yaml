@@ -15,3 +15,14 @@ audio:
   max_seconds: 15                    # same cap as a live turn
   min_seconds: 0.3                   # shorter clips are skipped when caching features (see DECISIONS.md)
   wavlm_model: microsoft/wavlm-base-plus
+
+text:
+  model: roberta-base
+  max_tokens: 128                    # longer inputs lose their oldest context tokens
+  batch_size: 8
+  grad_accum: 2                      # effective batch of 16
+  lr: 2.0e-5
+  epochs: 3
+  class_weighting: sqrt_inv          # sqrt_inv, inv, or none (see DECISIONS.md)
+  checkpoint_dir: checkpoints/text
+  run_dir: runs/text
