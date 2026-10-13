@@ -12,7 +12,7 @@ CFG = {
     "reply": {"low_conf": 0.45},
     "pipeline": {
         "frame_samples": 512, "start_ms": 250, "end_silence_ms": 600, "max_turn_s": 15,
-        "preroll_ms": 200, "history_turns": 3, "speaker_name": "Speaker",
+        "preroll_ms": 200, "history_turns": 3, "speaker_name": "Speaker", "input_device": None,
     },
 }
 FRAME = np.zeros(512, dtype=np.float32)
@@ -153,9 +153,10 @@ def test_reply_streams_tokens_then_done_and_is_remembered(monkeypatch):
     assert done["reply"] == "Hi there!" and done["turn_id"] == 2
     assert done["latency_ms"]["first_token"] <= done["latency_ms"]["reply"]
     assert pipeline.history[-1] == {"transcript": "how are you", "label": "neutral", "reply": "Hi there!"}
-    # the prompt holds the earlier turn as history and the current turn as what was just said
-    assert "Person: hello" in prompts[0]
-    assert 'The person just said: "how are you"' in prompts[0]
+    # the prompt holds the earlier turn as chat history and the current turn last
+    messages = prompts[0]
+    assert messages[1] == {"role": "user", "content": "hello"}
+    assert messages[-1]["role"] == "user" and messages[-1]["content"].startswith("how are you")
 
 
 def test_reset_forgets_the_conversation():

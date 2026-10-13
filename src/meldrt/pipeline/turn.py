@@ -39,6 +39,7 @@ class Pipeline:
         self.min_conf = cfg["fusion"]["conflict_min_conf"]
         self.context_k = cfg["data"]["context_k"]
         self.speaker = p["speaker_name"]
+        self.input_device = p["input_device"]
         self.reply_cfg = cfg["reply"]
 
         # frames from just before a turn is detected: the speech frames that triggered it, plus a little more
@@ -116,9 +117,9 @@ class Pipeline:
 
     def reply(self, state):
         """Streams the robot's reply to a state. Yields one token event per piece, then one done event."""
-        prompt = build_prompt(state, list(self.history)[:-1], self.reply_cfg["low_conf"])
+        messages = build_prompt(state, list(self.history)[:-1], self.reply_cfg["low_conf"])
         pieces, first_token_ms = [], None
-        for piece in stream_reply(prompt, self.reply_cfg):
+        for piece in stream_reply(messages, self.reply_cfg):
             if first_token_ms is None:
                 first_token_ms = (time.perf_counter() - self.turn_ended_at) * 1000
             pieces.append(piece)
@@ -147,5 +148,5 @@ class Pipeline:
         self.asr.transcribe(silence)
         self.classifier.audio_probs(silence)
         self.classifier.text_probs("", format_target(self.speaker, "hello"))
-        for _ in stream_reply("Say hello.", self.reply_cfg):
+        for _ in stream_reply([{"role": "user", "content": "Say hello."}], self.reply_cfg):
             pass

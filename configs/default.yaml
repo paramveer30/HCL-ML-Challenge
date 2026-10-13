@@ -56,6 +56,7 @@ pipeline:
   vad_threshold: 0.5                 # Silero speech probability at or above this counts as speech
   history_turns: 3                   # past turns kept for context and for the reply prompt
   speaker_name: Speaker              # name used for the live speaker in the text model's input
+  input_device: null                 # microphone: null is the system default, or part of a device name
 
 asr:
   model: small.en                    # Whisper small, English
@@ -78,3 +79,4 @@ voice:
   voice: af_heart
   speed: 1.0
   mute_tail_ms: 200                  # extra wait after the robot stops speaking before the mic is used again
+  output_device: null                # speakers: null is the system default, or part of a device name

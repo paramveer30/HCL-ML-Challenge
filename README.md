@@ -121,7 +121,16 @@ Replay a clip through the live pipeline at microphone speed. This is "one input 
 python scripts/replay.py D:/data/MELD/wav/dev/dia0_utt1.wav --label surprise
 ```
 
-`--label` only prints the true emotion next to the result; the script never reads the MELD label files. `--no-voice` prints the reply without speaking it, `--fast` drops the real-time pacing.
+It prints, for each turn:
+
+```
+You:    He's lost it, he's totally lost it.
+Feels:  sadness 53%  (words: sadness 74%, voice: sadness 36%)
+Robot:  I can imagine how that must feel. Let's find a way to help him.
+Timing: state 523 ms, first word 596 ms, full reply 711 ms  (after 608 ms of silence)
+```
+
+`--json` prints the full state record shown above instead of the two short lines. `--label` only prints the true emotion next to the result; the script never reads the MELD label files. `--no-voice` prints the reply without speaking it, `--fast` drops the real-time pacing.
 
 Talk to it:
 
@@ -129,7 +138,9 @@ Talk to it:
 python scripts/live.py
 ```
 
-Wait for `listening`, say one sentence, and pause. The state is printed, the reply streams, and the robot speaks it. While it speaks the microphone is ignored. Stop with Ctrl+C.
+Wait for `Listening.`, say one sentence, and pause. It prints what it heard, the emotion, and the reply as it streams, and speaks the reply. While it speaks the microphone is ignored; it prints `Listening.` again when it is ready for the next turn. Stop with Ctrl+C.
+
+If you cannot hear it, or it does not hear you, run `python scripts/check_audio.py`. It plays a tone, records four seconds, and lists the sound devices. The microphone and speakers can be set with `pipeline.input_device` and `voice.output_device` in `configs/default.yaml`.
 
 ## Measure it
 

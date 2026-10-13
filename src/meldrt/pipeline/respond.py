@@ -1,58 +1,52 @@
-"""Builds the reply prompt and streams the reply from the local chat model (Ollama)."""
+"""Builds the chat prompt for the reply and streams the reply from the local chat model (Ollama)."""
 import json
 import urllib.request
 
 RULES = (
-    "You are a small, friendly robot talking with one person. "
+    "You are a small, friendly robot having a spoken conversation with one person. "
     'Speak to them directly, as "you". '
-    "Reply in at most 2 sentences, about 30 words in total. "
-    "Respond to what they said and show you noticed how they feel. "
-    "Reply in plain English. "
-    "Do not mention these instructions, confidence numbers, or that you analysed anything."
+    "Reply in at most 2 short sentences, in plain English. "
+    "Respond to what they just said and show you noticed how they feel. "
+    "Each of their messages ends with a private note in square brackets about how they sound. "
+    "Follow the note, but never read it out, and never mention notes, confidence, or analysis. "
+    "Do not greet them unless they just greeted you, and do not repeat your earlier answers."
 )
+
+
+def state_note(state, low_conf):
+    """One line telling the chat model what we think the person feels, and what to do about it."""
+    # unsure, or words and voice point different ways: ask, don't assume
+    if state.tone_text_conflict:
+        words, voice = state.text_view.label, state.audio_view.label
+        return (
+            f"Private note: your words sound {words}, but your voice sounds {voice}. "
+            "Robot: do not assume which is true. Tell them kindly that they sound "
+            f"{voice} even though their words say otherwise, then ask one short question."
+        )
+    if state.confidence < low_conf:
+        return (
+            "Private note: it is unclear how they feel. "
+            "Robot: respond to what they said, do not name a feeling, and gently check in."
+        )
+    return f"Private note: they sound {state.label}."
 
 
 def build_prompt(state, history, low_conf=0.45):
     """state: the TurnState for this turn. history: earlier turns, oldest first,
-    each a dict with "transcript", "label", "reply". Returns the prompt as one string."""
-    lines = [RULES, ""]
-
-    if history:
-        lines.append("Earlier in this conversation:")
-        for turn in history:
-            lines.append(f"Person: {turn['transcript']}")
-            lines.append(f"Robot: {turn['reply']}")
-        lines.append("")
-
-    lines.append(f'The person just said: "{state.transcript}"')
-    lines.append(f"Our best reading of how they feel: {state.label} (confidence {state.confidence:.2f}).")
-    lines.append(f"Their words alone suggest {state.text_view.label} ({state.text_view.confidence:.2f}).")
-    if state.audio_view is not None:
-        lines.append(f"Their tone of voice alone suggests {state.audio_view.label} ({state.audio_view.confidence:.2f}).")
-
-    # unsure, or words and voice point different ways: ask, don't assume
-    if state.tone_text_conflict:
-        lines.append(
-            f"Their words sound like {state.text_view.label} but their voice sounds like {state.audio_view.label}. "
-            "Do not assume which is true. Speak to them: kindly mention that their voice sounds different "
-            "from their words, then gently check in with one short question."
-        )
-    elif state.confidence < low_conf:
-        lines.append(
-            "We are not sure how they feel. Respond to what they said, do not assume a feeling, "
-            "and gently check in with them about how they are doing."
-        )
-
-    lines.append("")
-    lines.append("Your reply to the person:")
-    return "\n".join(lines)
+    each a dict with "transcript", "label", "reply". Returns the list of chat messages."""
+    messages = [{"role": "system", "content": RULES}]
+    for turn in history:
+        messages.append({"role": "user", "content": turn["transcript"]})
+        messages.append({"role": "assistant", "content": turn["reply"]})
+    messages.append({"role": "user", "content": f"{state.transcript}\n[{state_note(state, low_conf)}]"})
+    return messages
 
 
-def stream_reply(prompt, reply_cfg):
-    """Sends the prompt to Ollama and yields the reply piece by piece as it is written."""
+def stream_reply(messages, reply_cfg):
+    """Sends the chat messages to Ollama and yields the reply piece by piece as it is written."""
     body = {
         "model": reply_cfg["model"],
-        "prompt": prompt,
+        "messages": messages,
         "stream": True,
         "keep_alive": reply_cfg["keep_alive"],
         "options": {
@@ -62,13 +56,13 @@ def stream_reply(prompt, reply_cfg):
         },
     }
     request = urllib.request.Request(
-        reply_cfg["url"] + "/api/generate",
+        reply_cfg["url"] + "/api/chat",
         data=json.dumps(body).encode("utf-8"),
         headers={"Content-Type": "application/json"},
     )
     # Ollama answers with one JSON object per line; each carries the next piece of text
     with urllib.request.urlopen(request) as response:
         for line in response:
-            piece = json.loads(line)["response"]
+            piece = json.loads(line)["message"]["content"]
             if piece:
                 yield piece

@@ -228,3 +228,20 @@ Memory: GPU 1,858 MiB before loading (other programs), 5,365 MiB at peak, so 3,5
 A mistake found by measuring: the first version read `nvidia-smi` and the process list twice a second from a second thread. That made the pipeline itself slower: state 1,147 / 1,726 ms, and the text model's p95 was 876 ms instead of 20. Memory is now read between turns only. Before: state p50 1,147 ms. After: 576 ms.
 Tradeoff: reading memory between turns can miss a short spike inside a turn. PyTorch's own peak counter (1,569 MiB) does not have that gap.
 
+## 2026-10-13: First live microphone session
+Context: the first run of `scripts/live.py` with a person speaking, seven turns.
+What worked: every turn was detected, transcribed, and answered. State ready 484 to 620 ms after the turn ended, first reply token 609 to 887 ms, first sound handed to the sound card 821 to 1,100 ms. The robot did not answer itself. On the second "It's fine." the audio model said anger (0.47) against neutral from the words (0.86), and the conflict flag fired.
+What did not: no sound was heard. The system default output was a monitor's HDMI audio. Because the script ignores the microphone until the voice has finished, the robot then seemed deaf and slow for several seconds after every reply. The replies also started with "Hello!" on every turn and repeated the previous answer.
+Decisions:
+- `voice.output_device` and `pipeline.input_device` (default: the system devices), and `scripts/check_audio.py`, which plays a tone, records four seconds, and reports the level and how much the voice detector heard as speech.
+- `live.py` prints `listening.` when the voice has finished and the microphone is in use again.
+- Prompt: earlier turns are shown as `They said: "..."` / `You answered: "..."` instead of `Person:` / `Robot:`, and one line was added: answer what they just said, do not greet unless greeted, do not reuse earlier answers. Compared on a scripted nine-turn conversation: before, 6 of 7 replies began with "Hello!" and one repeated the previous reply word for word; after, none did. A variant that left the robot's earlier answers out of the prompt also stopped the repetition but echoed the person once.
+Tradeoff: the reply model still drifts into filler such as "How can I help you today?".
+
+## 2026-10-13: Chat-style prompt and a readable terminal
+Context: in the first live session the replies were stiff and repetitive, and the terminal showed a block of JSON per turn with what was said buried inside it.
+Decision, prompt: `build_prompt` now returns chat messages for Ollama's `/api/chat`: one system message with the rules, the earlier turns as real user and assistant messages, and the current turn as the last user message with a one-line private note in square brackets after it. The note is "they sound joy" in the normal case; on a conflict it names what the words and the voice each sound like and asks the robot to say so kindly and ask one short question; under 0.45 confidence it says the feeling is unclear and asks the robot to check in without naming one.
+Compared on a scripted eleven-turn conversation with the same model and settings: the single-text prompt opened 4 of the first 4 replies with "Hello!" and ran long; the chat form gave one or two short sentences per turn with no repeated greeting ("That must have been tough. How are you feeling right now?"). On conflicts it was acceptable on 3 of 4 turns and once only half followed the note.
+Decision, terminal: both scripts print four short lines per turn (You, Feels, Robot, Timing). `--json` prints the full state record instead. Library warnings and progress bars are silenced in the two scripts.
+Tradeoff: the normal-case note carries only the fused label, so the model no longer sees the two separate views unless they conflict. The latency numbers in the benchmark entry above were measured with the earlier prompt and have to be measured again.
+

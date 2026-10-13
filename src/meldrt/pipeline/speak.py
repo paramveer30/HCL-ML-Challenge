@@ -39,6 +39,7 @@ class Speaker:
         self.voice = voice_cfg["voice"]
         self.speed = voice_cfg["speed"]
         self.mute_tail_s = voice_cfg["mute_tail_ms"] / 1000
+        self.output_device = voice_cfg["output_device"]
         # synthesize once without playing, so the first real sentence is not slowed by loading
         list(self.tts("Hello.", voice=self.voice, speed=self.speed))
         self.first_audio_at = None       # clock reading when this reply's first sound started playing
@@ -69,7 +70,7 @@ class Speaker:
             if self.first_audio_at is None:
                 self.first_audio_at = time.perf_counter()
             if self.play:
-                sd.play(audio, KOKORO_SAMPLE_RATE)
+                sd.play(audio, KOKORO_SAMPLE_RATE, device=self.output_device)
                 sd.wait()
             self.sounds.task_done()
 
