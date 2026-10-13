@@ -68,3 +68,11 @@ reply:
   seed: 0
   keep_alive: 30m                    # keep the model loaded between turns
   low_conf: 0.45                     # below this fused confidence the robot checks in instead of assuming
+
+voice:
+  repo: hexgrad/Kokoro-82M
+  device: cuda                       # cuda or cpu (see DECISIONS.md for the measured difference)
+  lang_code: a                       # American English
+  voice: af_heart
+  speed: 1.0
+  mute_tail_ms: 200                  # extra wait after the robot stops speaking before the mic is used again

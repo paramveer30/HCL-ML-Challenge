@@ -12,3 +12,6 @@ pytest==9.1.1
 faster-whisper==1.2.1
 silero-vad==6.2.3
 sounddevice==0.5.6
+kokoro==0.9.4
+# kokoro needs spaCy's small English model once, before going offline:
+#   python -m spacy download en_core_web_sm

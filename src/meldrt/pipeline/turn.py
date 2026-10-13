@@ -129,13 +129,17 @@ class Pipeline:
         latency = {"first_token": round(first_token_ms or reply_ms), "reply": round(reply_ms)}
         yield {"type": "done", "turn_id": state.turn_id, "reply": text, "latency_ms": latency}
 
-    def reset(self):
-        """Forgets the conversation so far. Used between unrelated clips."""
-        self.history.clear()
+    def clear_audio(self):
+        """Throws away any audio heard so far, but keeps the conversation. Used after the robot has spoken."""
         self.recent.clear()
         self.turn = []
         self.endpointer = Endpointer(self.frame_ms, *self.endpoint_settings)
         self.vad.reset()
+
+    def reset(self):
+        """Forgets the conversation so far as well. Used between unrelated clips."""
+        self.history.clear()
+        self.clear_audio()
 
     def warm_up(self):
         """Runs every model once so the first real turn is not slowed by loading."""

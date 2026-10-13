@@ -199,3 +199,17 @@ Measured: 10 dev clips replayed in real time, 10 turns. Time after the turn ende
 Seen in those clips: the fused label matched the true label on 4 of the 10 first turns, and on 7 of 10 in an earlier run where the clips shared one conversation. Ten clips prove nothing either way, but the live path differs from the scored one in three ways: Whisper's words instead of the transcript, no dialogue context for a lone clip, and a generic speaker name. Its accuracy has not been measured. Several clips also contain more speech than their transcript, or less.
 Tradeoff: frames that arrive while a reply is streaming wait in a queue and are processed afterwards.
 
+## 2026-10-12: Voice on the GPU, not the CPU (pending approval)
+Context: the plan put Kokoro-82M on the CPU so it would not compete for GPU memory.
+Measured on this machine, per sentence of 1.5 to 4.5 s of speech: 590 to 1,670 ms on the CPU, 109 to 182 ms on the GPU, with a peak of 637 MiB of GPU memory. Kokoro has 81,810,022 parameters, counted from the loaded model.
+Decision: `voice.device: cuda`. With every model loaded and the voice speaking, the card peaked at 5,371 MiB of 6,144 during a replay of four clips, about 2.1 GB of which was Windows and other open programs.
+Tradeoff: about 770 MiB of headroom. On a busier desktop it could run out; setting `voice.device: cpu` trades about a second of delay for that memory.
+Dependency: `kokoro` 0.9.4 (brings `misaki`, `spacy`, and `espeakng-loader`). It needs spaCy's `en_core_web_sm` model once; after that it loads with `HF_HUB_OFFLINE=1`.
+
+## 2026-10-12: Speaking while the reply is still being written
+Context: waiting for the whole reply before speaking adds the full generation time to the delay.
+Decision: the streamed text is cut into sentences; a sentence is sent to the voice as soon as the next one starts (`.`, `!` or `?` followed by a space) or the reply ends. Two worker threads, one that synthesizes and one that plays, so the next sentence is prepared while the current one is playing and the text stream never waits for sound. Both scripts take `--no-voice`.
+The microphone hears the robot, so `live.py` waits until the voice has finished plus 200 ms, throws away everything recorded meanwhile, and clears the endpointer. The robot therefore cannot be interrupted (no barge-in), and anything the person says while it talks is lost.
+Measured: 10 dev clips replayed in real time with the voice on. Time after the turn ended, median / max: state 519 / 672 ms, first reply token 673 / 788 ms, full reply 871 / 1,114 ms, first spoken audio 977 / 2,049 ms. The 2,049 ms was the first turn, before a warm-up sentence was added at start-up; in a later run of four clips the first turn took 1,221 ms and the others 858 to 937 ms. The target for first audio was 2,000 ms.
+Tradeoff: a one-sentence reply is only spoken once it is complete, because we cannot know it has ended until then.
+
