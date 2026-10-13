@@ -59,3 +59,12 @@ asr:
   model: small.en                    # Whisper small, English
   compute_type: int8
   beam_size: 1
+
+reply:
+  url: http://127.0.0.1:11434        # Ollama, local only
+  model: qwen2.5:1.5b
+  max_tokens: 64
+  temperature: 0.6
+  seed: 0
+  keep_alive: 30m                    # keep the model loaded between turns
+  low_conf: 0.45                     # below this fused confidence the robot checks in instead of assuming

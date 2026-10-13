@@ -9,6 +9,7 @@ CFG = {
     "audio": {"sample_rate": 16000},
     "data": {"context_k": 2},
     "fusion": {"conflict_min_conf": 0.4},
+    "reply": {"low_conf": 0.45},
     "pipeline": {
         "frame_samples": 512, "start_ms": 250, "end_silence_ms": 600, "max_turn_s": 15,
         "preroll_ms": 200, "history_turns": 3, "speaker_name": "Speaker",
@@ -134,11 +135,36 @@ def test_previous_turns_become_context():
     assert [t["transcript"] for t in pipeline.history] == ["two", "three", "four"]   # history keeps 3
 
 
-def test_add_reply_goes_on_the_latest_turn():
-    pipeline, _, _ = make(ONE_TURN, ["hello"])
+def test_reply_streams_tokens_then_done_and_is_remembered(monkeypatch):
+    prompts = []
+
+    def fake_stream(prompt, reply_cfg):
+        prompts.append(prompt)
+        yield from ["Hi ", "there", "!"]
+
+    monkeypatch.setattr("meldrt.pipeline.turn.stream_reply", fake_stream)
+    pipeline, _, _ = make(ONE_TURN * 2, ["hello", "how are you"])
+    first, second = [s for s in run(pipeline, len(ONE_TURN) * 2) if s]
+
+    events = list(pipeline.reply(second))
+    assert [e["type"] for e in events] == ["token", "token", "token", "done"]
+    assert [e["text"] for e in events[:3]] == ["Hi ", "there", "!"]
+    done = events[-1]
+    assert done["reply"] == "Hi there!" and done["turn_id"] == 2
+    assert done["latency_ms"]["first_token"] <= done["latency_ms"]["reply"]
+    assert pipeline.history[-1] == {"transcript": "how are you", "label": "neutral", "reply": "Hi there!"}
+    # the prompt holds the earlier turn as history and the current turn as what was just said
+    assert "Person: hello" in prompts[0]
+    assert 'The person just said: "how are you"' in prompts[0]
+
+
+def test_reset_forgets_the_conversation():
+    pipeline, _, classifier = make(ONE_TURN * 2, ["one", "two"])
     run(pipeline, len(ONE_TURN))
-    pipeline.add_reply("Hi there!")
-    assert pipeline.history[-1] == {"transcript": "hello", "label": "neutral", "reply": "Hi there!"}
+    pipeline.reset()
+    assert len(pipeline.history) == 0
+    run(pipeline, len(ONE_TURN))
+    assert classifier.calls[1][0] == ""          # the second turn sees no context from before the reset
 
 
 def test_empty_transcript_gives_no_state():

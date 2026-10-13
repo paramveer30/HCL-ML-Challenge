@@ -185,3 +185,17 @@ Measured on six dev clips pushed through the real pipeline with `HF_HUB_OFFLINE=
 Seen in those clips: a quiet "Oh my God," at the start of one clip was missed because Silero scored it as non-speech, and two clips with long pauses were split into two turns each.
 Tradeoff: pauses over 600 ms split one sentence into two turns, and very quiet speech at the start of a turn can be lost.
 
+## 2026-10-12: Reply prompt and streaming
+Context: the reply has to be short, spoken to the person, and grounded in both the words and the state.
+Decision: one prompt string with fixed rules (talk to the person as "you", at most 2 sentences, about 30 words, plain English), the earlier turns as Person / Robot lines, what was just said, the fused label with its confidence, and what the words alone and the voice alone suggest. Two extra instructions: on a tone/text conflict the robot mentions that the voice sounds different from the words and checks in with one question; when the fused confidence is under 0.45 (`reply.low_conf`, pending approval) it responds to the content and checks in without assuming a feeling. The reply is streamed from Ollama's `/api/generate` on 127.0.0.1 with the standard library, so no new dependency: 64 tokens at most, temperature 0.6, seed 0, model kept loaded for 30 minutes.
+What we tried: telling the model not to use quotation marks made it use them more, so that sentence was removed; surrounding quotes are stripped from the stored reply instead. Three wordings of the conflict instruction were compared on six made-up cases; the one kept most often produced a line like "You sound angry even though you say it's just another meeting."
+Tradeoff: a 1.5B model does not always follow the rules. It sometimes describes the person instead of answering them, or names the wrong feeling. Reply quality is not scored.
+
+## 2026-10-12: Replay and live scripts
+Context: the brief asks for one input travelling through the system to both outputs.
+Decision: `scripts/replay.py` reads a WAV, adds one second of silence so the turn can end, and pushes 512-sample frames at microphone speed; `scripts/live.py` does the same from the default microphone through a queue. Both set `HF_HUB_OFFLINE=1`, print the state as JSON, then the reply as it streams, then the timings. Both only import `meldrt.pipeline`. Replay treats each file as its own conversation.
+Replay never reads a MELD CSV: the true label of a clip can be typed in with `--label` for display. So the rule that only `final_eval.py` reads the test split still holds. The 10-clip check below used dev clips for the same reason (pending approval: the plan said test clips).
+Measured: 10 dev clips replayed in real time, 10 turns. Time after the turn ended, median / max: state 557 / 650 ms, first reply token 722 / 803 ms, full reply 885 / 985 ms. Targets were 600, 1,500, and 3,000 ms. The card showed 3.4 GB in use with every model loaded, including the reply model.
+Seen in those clips: the fused label matched the true label on 4 of the 10 first turns, and on 7 of 10 in an earlier run where the clips shared one conversation. Ten clips prove nothing either way, but the live path differs from the scored one in three ways: Whisper's words instead of the transcript, no dialogue context for a lone clip, and a generic speaker name. Its accuracy has not been measured. Several clips also contain more speech than their transcript, or less.
+Tradeoff: frames that arrive while a reply is streaming wait in a queue and are processed afterwards.
+
