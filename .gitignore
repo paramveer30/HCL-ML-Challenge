@@ -1,0 +1,19 @@
+# environment
+.venv/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+
+# data, caches, and model outputs never go in git
+data/
+cache/
+checkpoints/
+runs/
+*.wav
+*.mp4
+*.npy
+*.pt
+*.bin
+*.safetensors
+*.gguf
