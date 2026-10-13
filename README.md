@@ -59,12 +59,12 @@ Delay after a turn ends, in ms, over 50 replayed turns on a GTX 1660 Ti (`script
 
 | | p50 | p95 |
 | --- | ---: | ---: |
-| State ready | 576 | 713 |
-| First reply token | 732 | 916 |
-| Full reply | 968 | 1,327 |
-| First spoken sound ready | 996 | 1,260 |
+| State ready | 253 | 489 |
+| First reply token | 334 | 564 |
+| Full reply | 450 | 745 |
+| First spoken sound ready | 542 | 780 |
 
-Before these clocks start, the pipeline waits 608 ms of silence to decide the turn is over. Peak GPU memory was 5,365 MiB with every model loaded, of which 1,858 MiB belonged to other programs.
+Before these clocks start, the pipeline waits 608 ms of silence to decide the turn is over. Peak GPU memory was 4,508 MiB with every model loaded, of which 1,137 MiB belonged to other programs.
 
 Learned parameters on the inference path: 2,088,681,413, which is 34.8% of the 6 billion cap (`scripts/count_params.py`).
 
@@ -140,7 +140,15 @@ python scripts/live.py
 
 Wait for `Listening.`, say one sentence, and pause. It prints what it heard, the emotion, and the reply as it streams, and speaks the reply. While it speaks the microphone is ignored; it prints `Listening.` again when it is ready for the next turn. Stop with Ctrl+C.
 
-If you cannot hear it, or it does not hear you, run `python scripts/check_audio.py`. It plays a tone, records four seconds, and lists the sound devices. The microphone and speakers can be set with `pipeline.input_device` and `voice.output_device` in `configs/default.yaml`.
+If you cannot hear it, or it does not hear you, run `python scripts/check_audio.py`. It plays a tone, records six seconds, reports how much of it was heard as speech, and lists the sound devices. The microphone and speakers can be set with `pipeline.input_device` and `voice.output_device` in `configs/default.yaml`.
+
+Or use the web page, which shows the same turn in a browser: the conversation on the left, and each model's probabilities and the timings on the right.
+
+```powershell
+python -m uvicorn ui.server:app --host 127.0.0.1 --port 8000
+```
+
+Open http://127.0.0.1:8000. The page starts in mock mode, which needs no models. Untick **mock mode** to load the real ones, then hold the talk button (or the space bar) while you speak. See `ui/README.md`.
 
 ## Measure it
 
@@ -161,6 +169,7 @@ src/meldrt/
   eval/      metrics, ablation rows, parameter counting
   pipeline/  voice detector, endpointer, speech recognition, classifier, turn loop, reply, voice
 scripts/     final_eval, replay, live, bench_latency, count_params, fetch_models
+ui/          the local web page: FastAPI server, pipeline adapter, static files
 tests/       run on CPU in seconds, with no dataset and no model downloads
 ```
 

@@ -17,10 +17,10 @@ Times in ms over 50 replayed turns (`scripts/bench_latency.py`).
 | Clock | Starts | Ends | Target (p50) | p50 | p95 |
 | --- | --- | --- | ---: | ---: | ---: |
 | `endpoint` | last voiced frame | turn judged over | about 600 | 608 | 608 |
-| `state` | turn judged over | state ready | 600 | 576 | 713 |
-| `first_token` | turn judged over | first reply token | 1,500 | 732 | 916 |
-| `reply` | turn judged over | last reply token | 3,000 | 968 | 1,327 |
-| `first_audio` | turn judged over | first spoken sound ready | 2,000 | 996 | 1,260 |
+| `state` | turn judged over | state ready | 600 | 253 | 489 |
+| `first_token` | turn judged over | first reply token | 1,500 | 334 | 564 |
+| `reply` | turn judged over | last reply token | 3,000 | 450 | 745 |
+| `first_audio` | turn judged over | first spoken sound ready | 2,000 | 542 | 780 |
 
 ## 3. System
 
@@ -44,14 +44,14 @@ mic or WAV  --32 ms frames-->  voice detector + endpointer
                                Kokoro, per sentence  ------> spoken reply
 ```
 
-> TODO (Param): 1 to 2 paragraphs walking one turn through the diagram. Mention: speech recognition and the audio model start together; the state keeps each model's own view and a conflict flag; the reply prompt checks in when the two disagree or confidence is low; the voice speaks sentence by sentence.
+> TODO (Param): 1 to 2 paragraphs walking one turn through the diagram. Mention: the audio model runs first, then speech recognition (side by side was slower on one GPU); the state keeps each model's own view and a conflict flag; the reply prompt checks in when the two disagree or confidence is low; the voice speaks sentence by sentence.
 
 Parameters on the local inference path (`scripts/count_params.py`; counted from the loaded models and model files, not typed in):
 
 | Component | Role | Parameters |
 | --- | --- | ---: |
 | Silero VAD | speech or not, per 32 ms frame | 462,594 |
-| Whisper small.en (faster-whisper, int8) | speech to text | 241,761,792 |
+| Whisper small.en (faster-whisper, 8-bit weights) | speech to text | 241,761,792 |
 | RoBERTa-base with emotion head | text emotion, fine-tuned by us | 124,651,015 |
 | WavLM-base-plus | audio features, frozen | 94,381,936 |
 | Audio head | audio emotion, trained by us | 198,676 |
@@ -118,6 +118,16 @@ fear            23    3         5      5        6        0     8
 
 The audio head's learned layer weights peak at WavLM layers 8 to 10 (0.150, 0.182, 0.121; equal weights would be 0.077).
 
+Checked afterwards on dev only (nothing was retrained for the results above): class weights $1/\sqrt{n_c}$ against no weights and full inverse frequency.
+
+| Class weights | Text, dev weighted / macro F1 | Audio head, dev weighted / macro F1 (3 seeds) |
+| --- | --- | --- |
+| none | 0.608 / 0.456 | 0.474 to 0.479 / 0.303 to 0.317 |
+| $1/\sqrt{n_c}$ (used) | 0.615 / 0.479 | 0.489 to 0.502 / 0.353 to 0.361 |
+| $1/n_c$ | 0.590 / 0.474 | 0.419 to 0.435 / 0.314 to 0.339 |
+
+Resampling the dev rows 2,000 times, the fusion gain over text (+0.020) has a 95% interval of +0.002 to +0.037.
+
 > TODO (Param): 2 paragraphs in your own words. (1) What the table shows: both models beat the baseline, text is the strong one, rare classes are weak. (2) Fusion: +0.020 weighted F1 on dev, -0.0015 on test. Why the dev gain did not carry over (alpha from a nearly flat curve on 1,109 rows; audio weaker on test than dev), that nothing was retuned after test, and what audio still contributes (the conflict flag).
 
 ## 6. Latency and resources
@@ -126,23 +136,36 @@ The audio head's learned layer weights peak at WavLM layers 8 to 10 (0.150, 0.18
 
 | Stage | p50 | p95 |
 | --- | ---: | ---: |
-| Speech recognition (Whisper) | 563 | 696 |
-| Audio branch (WavLM + head), running at the same time | 455 | 521 |
-| Text model (RoBERTa) | 15 | 20 |
-| **State ready** | **576** | **713** |
-| First reply token | 732 | 916 |
-| Full reply | 968 | 1,327 |
-| First spoken sound ready | 996 | 1,260 |
+| Audio branch (WavLM + head) | 24 | 35 |
+| Speech recognition (Whisper), after the audio branch | 212 | 436 |
+| Text model (RoBERTa) | 13 | 20 |
+| **State ready** | **253** | **489** |
+| First reply token | 334 | 564 |
+| Full reply | 450 | 745 |
+| First spoken sound ready | 542 | 780 |
 
-The state met its 600 ms target on 58% of turns; the other three clocks met theirs on every turn.
+The state met its 600 ms target on 98% of turns, the first reply token on 98%, the full reply on 100%, and the first sound on 98%. One turn of the 50 took about 2.6 s to reach the state.
+
+The same benchmark before and after three changes made on Oct 13 (p50 / p95, same 50 clips, same prompt):
+
+| Stage | Before | After |
+| --- | ---: | ---: |
+| Speech recognition | 579 / 919 | 212 / 436 |
+| Audio branch | 469 / 550 | 24 / 35 |
+| State ready | 596 / 934 | 253 / 489 |
+| First reply token | 676 / 1,019 | 334 / 564 |
+| Full reply | 808 / 1,178 | 450 / 745 |
+| First spoken sound ready | 895 / 1,236 | 542 / 780 |
+
+The three changes, each measured on its own first (`DECISIONS.md`): (1) Whisper with 8-bit weights and 32-bit arithmetic instead of 8-bit arithmetic, 325 to 204 ms alone on the GPU with the same word error rate; (2) the audio branch and speech recognition one after the other instead of side by side, 249 to 224 ms for the pair; (3) keeping the GPU busy during the 608 ms wait for the end of a turn. The GPU slows down while it sits idle during the speech: the same pair took 207 ms after 1 s of idle and 421 ms after 4 s. Running the audio model on half a second of silence once per frame during the wait brought it back to 228 ms.
 
 | Resource | Observed |
 | --- | ---: |
-| GPU memory before loading anything (other programs) | 1,858 MiB |
-| GPU memory at peak, everything loaded | 5,365 MiB of 6,144 |
-| GPU memory used by the system | 3,507 MiB |
-| of which held by PyTorch (RoBERTa, WavLM, head, Kokoro) | 1,569 MiB |
-| RAM at peak (our process plus Ollama) | 2,440 MiB |
+| GPU memory before loading anything (other programs) | 1,137 MiB |
+| GPU memory at peak, everything loaded | 4,508 MiB of 6,144 |
+| GPU memory used by the system | 3,371 MiB |
+| of which held by PyTorch (RoBERTa, WavLM, head, Kokoro) | 1,556 MiB |
+| RAM at peak (our process plus Ollama) | 2,253 MiB |
 | Model load time, already downloaded | about 4 s, plus the reply model |
 
 A browser was open during the run. An earlier version of the benchmark read the memory counters twice a second from a second thread, which slowed the pipeline itself: the state p50 was 1,147 ms. Memory is now read between turns only.
@@ -160,7 +183,7 @@ A browser was open during the run. An earlier version of the benchmark read the 
 
 Training: the text model took 503 s for 3 epochs; the audio head 25 s for 30 epochs; caching WavLM features for all 13,477 clips about 9 minutes; extracting audio about 10 minutes.
 
-PyTorch models run in fp32: the GTX 1660 series has a known half-precision problem. Whisper runs as int8 inside CTranslate2 and the reply model as 4-bit GGUF inside Ollama.
+PyTorch models run in fp32: the GTX 1660 series has a known half-precision problem. Whisper runs with 8-bit weights and 32-bit arithmetic (`int8_float32`) inside CTranslate2 and the reply model as 4-bit GGUF inside Ollama.
 
 ## 8. Decisions and tradeoffs
 
@@ -172,18 +195,18 @@ PyTorch models run in fp32: the GTX 1660 series has a known half-precision probl
 > - Fusion did not beat text alone on test.
 > - Fear and disgust score around 0.2 F1.
 > - One seed.
-> - The accuracy of the live path is not measured: it uses Whisper's transcript, no dialogue context for a lone clip, and a generic speaker name. On 10 replayed dev clips the label matched 4 times.
+> - The live path is less accurate than the offline scores. On the first 200 dev clips: offline fused 0.658 weighted / 0.525 macro F1; gold words with no dialogue context and the generic speaker name 0.615 / 0.535; the real live path (Whisper's words, no context) 0.523 / 0.379. So most of the loss comes from the recognized words (word error rate 29% on these TV clips), about 0.03 from the missing context, and almost none from the speaker name. The audio branch is identical live and offline (same top label on 248 of 248 clips).
 > - MELD is acted TV audio with laugh tracks; several clips contain more or less speech than their transcript.
-> - Pauses over 600 ms split one sentence into two turns; the voice detector can miss quiet speech at the start of a turn.
+> - Pauses over 600 ms split one sentence into two turns: 11.5% of 400 dev clips came out as two or more turns, and 10.8% were not detected as a turn at all. A shorter wait would answer sooner but cut more: 14.2% at 500 ms, 18.0% at 400 ms. So the wait stayed at 600 ms.
 > - No barge-in: the microphone is ignored while the robot speaks.
 > - The reply model is small and does not always follow the prompt; reply quality is not scored.
 > - About 2% of utterances have no audio prediction (clips under 0.3 s).
 
 ## 10. Completed and intentionally left out
 
-Completed: text emotion model with dialogue context; audio emotion model on frozen WavLM features; late fusion with an ablation on test; a streaming turn pipeline (voice detection, endpointing, speech recognition, classification, state, streamed reply, spoken reply); replay and live scripts; latency, memory, and parameter measurements.
+Completed: text emotion model with dialogue context; audio emotion model on frozen WavLM features; late fusion with an ablation on test; a streaming turn pipeline (voice detection, endpointing, speech recognition, classification, state, streamed reply, spoken reply); replay and live scripts; a local web page that shows a turn as it happens; latency, memory, and parameter measurements; a check on dev of the weighting choices and of the accuracy lost in the live path.
 
-Left out on purpose: the vision track and the three-modality extension; reinforcement learning; barge-in; a web UI or network server; a stacked fusion model; multiple seeds; an ablation of the dialogue context; a comparison of recognized against gold transcripts; rating of reply quality; an emotion-matched voice.
+Left out on purpose: the vision track and the three-modality extension; reinforcement learning; barge-in; a stacked fusion model; multiple seeds; an ablation of the dialogue context on the full dev set; rating of reply quality; an emotion-matched voice.
 
 ## 11. External components
 

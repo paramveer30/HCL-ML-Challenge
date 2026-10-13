@@ -245,3 +245,67 @@ Compared on a scripted eleven-turn conversation with the same model and settings
 Decision, terminal: both scripts print four short lines per turn (You, Feels, Robot, Timing). `--json` prints the full state record instead. Library warnings and progress bars are silenced in the two scripts.
 Tradeoff: the normal-case note carries only the fused label, so the model no longer sees the two separate views unless they conflict. The latency numbers in the benchmark entry above were measured with the earlier prompt and have to be measured again.
 
+## 2026-10-13: Conflict flag needs 0.5 from both models
+Context: in live use the audio model's reading of tone was often wrong (it scores 0.475 weighted F1 on test, and a webcam microphone and everyday speech are further from its training data than TV audio). At a threshold of 0.4 the conflict flag fired on weak audio guesses, for example anger at 0.47 on a calm "It's fine.".
+Decision: `fusion.conflict_min_conf: 0.5`. Both models must give their own top label at least 0.5 before the robot is told that words and voice disagree. This changes when the robot checks in, not any label or score: the test results do not depend on it.
+Tradeoff: real mismatches where the audio model is only moderately sure are now missed. The threshold was chosen from a handful of live turns, not tuned on data.
+
+## 2026-10-13: Fresh-clone check
+Context: a reviewer starts from a clone, not from our working folder.
+What was done: the repository was cloned into a new folder and every README step was followed in a new Python 3.11 environment: PyTorch, `requirements.txt`, `pip install -e .`, the spaCy model, `fetch_models.py`, `ollama pull`, `pytest`, audio extraction, row counts, feature caching, text training, audio head training, alpha tuning, `final_eval.py --split dev`, one replayed clip, and `count_params.py`. The data folders in the config were the existing ones, so extraction and caching found their outputs and skipped. The test split was not scored again.
+Result: every step ran. 117 tests passed in the new environment. The clone held only the public files. The whole run took 22 minutes, 10 of them training the text model while another program shared the GPU.
+Reproducibility of the models from the same seed: the audio head came out identical (best epoch 17, dev 0.502 / 0.361). The text model matched in epoch 1 (0.5913) and then drifted slightly: best dev 0.6179 / 0.4835 against 0.6150 / 0.4792 in the original run. Alpha was 0.45 again, with fused dev 0.6301 against 0.6346. The parameter count was the same, 2,088,681,413.
+Tradeoff: fine-tuning on the GPU is not bit-for-bit repeatable, so a reviewer who retrains should expect dev scores within about 0.005 of ours, not the same digits.
+
+## 2026-10-13: A local web page for the robot (mock mode first)
+Context: the terminal scripts show the state and the reply, but a character robot is easier to judge when the emotion is visible. Earlier the plan left a web UI out for time; blocks A to C finished early enough to add one.
+Decision: a `ui/` folder with a FastAPI server (static files, `/clips`, one WebSocket at `/ws`) and a page in plain HTML, CSS, and JavaScript with no build step. The page is a plain terminal-style screen (black, white monospace, labels in square brackets): the current emotion as one large line, the conversation as a log, and an "under the hood" panel with the text, audio, and fused probabilities and the timings. A first version had an animated character with a warm palette; it was replaced by this simpler look the same day. The page only talks to a `PipelineAdapter` interface. `MockPipeline` fakes a full turn; `RealPipeline` is a stub, so the existing pipeline code is untouched. Microphone audio is converted in the browser to 16 kHz frames of 512 samples, the size the voice detector expects.
+Checked in a headless browser in mock mode: status changes, transcript, three bar groups, streamed reply, timing rows. No console errors. Every request went to 127.0.0.1. No horizontal scrolling at 375 px wide.
+Dependencies: `fastapi` 0.143.0, `uvicorn` 0.54.0, `websockets` 17.2. They are only needed for the page, not for the scripts.
+Tradeoff: more code to keep working, and the page is not connected to the real models yet. The server binds to 127.0.0.1, so nothing leaves the machine.
+
+
+## 2026-10-13: The web page runs the real models
+Context: the page was mock only. A demo needs the real pipeline behind it.
+Decision: `RealPipeline` in `ui/pipeline_adapter.py` calls the existing pipeline and changes nothing in `src/meldrt/`. Models load when mock mode is unticked. A push-to-talk turn is the audio between press and release, sent straight to `process_turn`, so the voice detector and the endpointer are not used for it. A replayed clip from `ui/clips/` goes through `push_frame` in 32 ms frames at real-time pace, like `scripts/replay.py`, and is played out loud. The reply is spoken by the server through the computer's speakers. The pipeline runs in a worker thread with a lock, one turn at a time. A wrapper around the classifier keeps each model's full probabilities for the page, because the state only keeps each model's top label.
+Layout: the page was reworked twice after looking at it. Final form: title and by-line centered at the top, the talk button in the middle, two outlined boxes under it (conversation, under the hood), black and white monospace with wide spacing. The three bar groups became one table with a column per model.
+Checked: through the WebSocket in real mode, two dev clips and one push-to-talk turn gave a transcript, three distributions, a streamed and spoken reply, and timings (first audio 992 to 1,122 ms after the end of the turn). In a headless browser with a dev clip as a fake microphone, holding the space bar gave a full turn with no console errors. The tests use a fake pipeline and need no models.
+Tradeoff: push-to-talk has no endpointing, so the page does not show off the endpointer on live speech; `scripts/live.py` does. The first press loses the first words while the browser sets up the microphone. The page timings are single turns, not the benchmark.
+
+## 2026-10-13: Audit of the weighting choices and of the live path (dev only)
+Context: before the write-up we checked that the class weights, the fusion weight, and the criteria behind them hold up, and why a sample labelled fear came out as neutral in the web page. Everything here uses the dev split. The shipped checkpoints, alpha, and the test scores did not change.
+Confirmed:
+- `scripts/final_eval.py --split dev` reproduces the saved numbers exactly (text 0.6150 / 0.4792, audio 0.5000 / 0.3582, fused 0.6346 / 0.4951), so the checkpoints on disk are the reported ones.
+- The class weights are computed from train counts only and match the table (0.40 for neutral to 1.66 for fear, a ratio of 4.2; full inverse frequency gives 17.6).
+- Audio head, three seeds per scheme, dev weighted / macro F1: no weights 0.474 to 0.479 / 0.303 to 0.317 (fear F1 0.00 in all three); `sqrt_inv` 0.489 to 0.502 / 0.353 to 0.361; `inv` 0.419 to 0.435 / 0.314 to 0.339. `sqrt_inv` is the best of the three on both scores in every seed.
+- Text model, one seed per scheme (two extra training runs written to `runs/audit/`, the shipped checkpoint untouched), best dev weighted / macro F1: no weights 0.608 / 0.456 (fear F1 0.12); `sqrt_inv` 0.615 / 0.479 (fear 0.28); `inv` 0.590 / 0.474 (fear 0.26). `sqrt_inv` is the best of the three on both scores. Its lead over no weights in weighted F1 (0.007) is about the size of the seed-to-seed drift we measured (0.005); the lead in macro F1 (0.023) is larger.
+- Fusion on dev: +0.0196 weighted F1 over text. Resampling the 1,109 dev rows 2,000 times gives a 95% interval of +0.002 to +0.037, and fusion is ahead in 98% of resamples. Alpha 0.45 is the best value in 72% of resamples (0.70 in 15%). So the dev gain is real but small, and its lower end is close to zero, which fits the test result (-0.0015).
+- The live audio branch equals the offline one: same top label on 248 of 248 clips, largest probability difference 0.0000.
+Found:
+- The live path loses accuracy, and most of it is the recognized words. First 200 dev clips, weighted / macro F1: offline fused 0.658 / 0.525; gold words, context kept, speaker called `Speaker` 0.650 / 0.581; gold words, no context 0.615 / 0.535; Whisper's words, no context (the live path for a lone clip) 0.523 / 0.379. Whisper small.en with beam 1 has a word error rate of 29% on these clips and writes 87 of the 168 `!` and `?` marks the gold lines have.
+- Share of clips of each emotion the live path gets right (248 clips): neutral 0.87, joy 0.50, surprise 0.45, anger 0.32, sadness 0.25, fear 0.21, disgust 0.05. Offline fused on the same clips: 0.83, 0.75, 0.76, 0.45, 0.50, 0.23, 0.09.
+- A bug in the web page: a replayed sample kept the previous sample as its dialogue context. It now starts a new conversation, like `scripts/replay.py`.
+- A crash: a transcript longer than the text model's 128 tokens with no context to drop made the tokenizer fail. Whisper produced a 120-word transcript for a 0.7 s clip when its retry at higher temperature was switched off. `keep_end` in `pipeline/classify.py` now keeps the end of such a transcript. Training and evaluation are not affected (the longest MELD line is 94 tokens).
+Decisions:
+- Sample clips in the page whose file names start with emotion names are compared with what the robot said, in the log, so a miss is shown as a miss. Dialogue samples (several lines of one dev dialogue in one file) give the text model real context.
+- The sample clips used for the demo (local files, not committed) were picked from dev by a rule: for each emotion, the clip the live path was most sure of among those it got right. It got no disgust clip right, so the disgust sample is a known miss. Replayed through the page: 6 of 7 single lines right, and 2 of 3 and 2 of 4 lines right in two dialogue samples.
+- The models stay as they are. Making them better on rare emotions means retraining and scoring test again.
+With more time: fine-tune the text model on recognized transcripts, or use a larger recognizer; several seeds; calibrate the two models before fusing.
+
+## 2026-10-13: Faster answers
+Context: the delay after a turn was dominated by speech recognition and the audio model running at the same time on one GPU.
+Measured first, each change on its own:
+- Whisper compute type, 200 dev clips, recognition alone: `int8` 325 ms p50, `int8_float32` 204 ms. Word error rate against the gold lines 0.289 and 0.284; live-path weighted F1 0.523 and 0.516 (a difference of one or two clips). Leaner decoding (no timestamps, no retry at higher temperature) saved another 16 ms but allowed the runaway transcript described above, so decoding is unchanged. Beam 5 cost 115 ms for +0.006 F1 and was not taken.
+- Order, 16 dev clips, `int8_float32`: side by side 249 ms for the pair (the audio model alone takes 22 ms, next to Whisper 126 ms); one after the other 224 ms.
+- Idle GPU, 14 dev clips: the pair took 207 ms after 1 s of idle and 421 ms after 4 s. A tiny GPU job per frame did not help (418 ms). The audio model on half a second of silence once per frame during the last 0.6 s did (228 ms).
+- End-of-turn wait, 400 dev clips: cut into two or more turns 11.5% at 600 ms, 14.2% at 500, 18.0% at 400, 23.8% at 300. 10.8% of clips are not detected as a turn at any setting.
+- Whisper on silence, noise, or hum writes "you" with `no_speech_prob` 0.86 to 0.94. On 245 real clips with a transcript the highest value was 0.594.
+Decisions:
+- `asr.compute_type: int8_float32`.
+- `process_turn` runs the audio model, then speech recognition. The thread pool is gone.
+- `pipeline.warm_during_silence: true`: while the endpointer is inside a turn and the current frame is silent, the audio model runs on half a second of silence and the result is thrown away.
+- `asr.max_no_speech_prob: 0.75`: a turn whose every segment is above it gives an empty transcript, so no state and no reply.
+- `pipeline.end_silence_ms` stays 600. The rule was "at most 1 point more cut-offs than at 600"; 500 ms adds 2.7 points.
+A check that failed as written: the plan said the new recognition settings must give the same words as before on 98% of clips. Changing the compute type alone changes the words on 7.5% of clips, because greedy decoding flips on small numeric differences. The check was replaced by word error rate against the gold lines and F1 against the gold labels, both unchanged within noise.
+Benchmark, 50 turns, same clips and prompt, p50 / p95 in ms after the turn was judged over. Before: recognition 579 / 919, audio 469 / 550, state 596 / 934, first reply token 676 / 1,019, full reply 808 / 1,178, first sound 895 / 1,236. After: recognition 212 / 436, audio 24 / 35, state 253 / 489, first reply token 334 / 564, full reply 450 / 745, first sound 542 / 780. The state is ready within 600 ms on 98% of turns (50% before). GPU peak 4,508 MiB with 1,137 MiB used by other programs, so 3,371 MiB for the system (3,475 before). The numbers in the Oct 12 benchmark entry were measured with the earlier prompt and are replaced by these.
+Tradeoff: the GPU does throwaway work during pauses inside speech, up to 19 calls of about 20 ms per pause. Push-to-talk in the web page has no wait for silence, so it does not get this warm-up. The 608 ms wait still comes before every number above.

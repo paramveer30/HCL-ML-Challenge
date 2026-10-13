@@ -4,11 +4,19 @@ import re
 import threading
 import time
 
+import numpy as np
 import sounddevice as sd
 import torch
 from kokoro import KPipeline
 
 KOKORO_SAMPLE_RATE = 24000
+
+
+def play_tone(output_device, seconds=0.4, frequency=440):
+    """A short beep on the speakers the voice will use."""
+    t = np.arange(int(seconds * KOKORO_SAMPLE_RATE)) / KOKORO_SAMPLE_RATE
+    sd.play((0.2 * np.sin(2 * np.pi * frequency * t)).astype(np.float32), KOKORO_SAMPLE_RATE, device=output_device)
+    sd.wait()
 
 
 class SentenceChunker:
@@ -59,26 +67,40 @@ class Speaker:
     def synthesize_loop(self):
         while True:
             sentence = self.sentences.get()
-            chunks = [result.audio for result in self.tts(sentence, voice=self.voice, speed=self.speed)]
-            if chunks:
-                self.sounds.put(torch.cat(chunks).cpu().numpy())
-            self.sentences.task_done()
+            # if a sentence fails (for example the GPU runs out of memory) we skip it; without the
+            # finally, wait() would block forever and the robot would stop listening
+            try:
+                chunks = [result.audio for result in self.tts(sentence, voice=self.voice, speed=self.speed)]
+                if chunks:
+                    self.sounds.put(torch.cat(chunks).cpu().numpy())
+            except Exception as error:
+                print(f"[voice] could not speak a sentence: {error}", flush=True)
+            finally:
+                self.sentences.task_done()
 
     def play_loop(self):
         while True:
             audio = self.sounds.get()
-            if self.first_audio_at is None:
-                self.first_audio_at = time.perf_counter()
-            if self.play:
-                sd.play(audio, KOKORO_SAMPLE_RATE, device=self.output_device)
-                sd.wait()
-            self.sounds.task_done()
+            try:
+                if self.first_audio_at is None:
+                    self.first_audio_at = time.perf_counter()
+                if self.play:
+                    sd.play(audio, KOKORO_SAMPLE_RATE, device=self.output_device)
+                    sd.wait()
+            except Exception as error:
+                print(f"[voice] could not play sound: {error}", flush=True)
+            finally:
+                self.sounds.task_done()
 
     def wait(self):
-        """Blocks until everything queued so far has been spoken, plus a short tail for the room to go quiet."""
+        """Blocks until everything queued so far has been spoken, plus a short tail for the room to go quiet.
+
+        Returns the clock reading when this reply's first sound started, or None if nothing was spoken.
+        """
         self.sentences.join()
         self.sounds.join()
         time.sleep(self.mute_tail_s)
+        return self.first_audio_at
 
 
 def speak_while_streaming(events, speaker):

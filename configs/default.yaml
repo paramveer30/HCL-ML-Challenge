@@ -37,9 +37,31 @@ audio_head:
   checkpoint: checkpoints/audio/best.pt
   run_dir: runs/audio
 
+vision:
+  model: trpakov/vit-face-expression # ViT-base trained for facial expressions, used frozen
+  detector_file: cache/face_detection_yunet_2023mar.onnx   # YuNet face detector, fetched by scripts/fetch_models.py
+  detector_url: https://github.com/opencv/opencv_zoo/raw/main/models/face_detection_yunet/face_detection_yunet_2023mar.onnx
+  frames_per_clip: 8                 # evenly spaced over the clip
+  min_face_score: 0.6                # detector confidence a face needs
+  detect_width: 640                  # wider frames are shrunk to this width for face detection only
+  min_face_px: 40                    # smaller faces are ignored: too few pixels to read an expression
+  face_margin: 0.25                  # extra room around the face box, as a share of its size
+  image_size: 224
+  feature_root: D:/data/MELD/vit_face   # cache_vision.py writes feature_root/<split>/dia{D}_utt{U}.npy
+
+vision_head:
+  hidden: 256
+  dropout: 0.2
+  lr: 1.0e-3
+  batch_size: 64
+  epochs: 30
+  class_weighting: sqrt_inv          # same scheme as the other two models
+  checkpoint: checkpoints/vision/best.pt
+  run_dir: runs/vision
+
 fusion:
   alpha_step: 0.05                   # grid for the weight on text, tuned on dev
-  conflict_min_conf: 0.4             # both models must be at least this sure for a tone/text conflict
+  conflict_min_conf: 0.5             # both models must be at least this sure for a tone/text conflict
   run_dir: runs/fusion
 
 eval:
@@ -52,6 +74,9 @@ pipeline:
   start_ms: 250                      # this much speech in a row starts a turn
   end_silence_ms: 600                # this much silence in a row ends it
   max_turn_s: 15                     # a turn is force-ended here
+  use_vision: true                   # load the face models; a turn uses them when camera or video frames arrive
+  max_faces: 64                      # camera frames with a face remembered at most
+  warm_during_silence: true          # keep the GPU busy while waiting for the end of a turn (see DECISIONS.md)
   preroll_ms: 200                    # audio kept from before the turn was detected, so the first word is whole
   vad_threshold: 0.5                 # Silero speech probability at or above this counts as speech
   history_turns: 3                   # past turns kept for context and for the reply prompt
@@ -60,8 +85,9 @@ pipeline:
 
 asr:
   model: small.en                    # Whisper small, English
-  compute_type: int8
+  compute_type: int8_float32         # 8-bit weights, 32-bit arithmetic: faster than int8 on this card (see DECISIONS.md)
   beam_size: 1
+  max_no_speech_prob: 0.75           # above this for the whole turn, the audio is treated as not speech
 
 reply:
   url: http://127.0.0.1:11434        # Ollama, local only

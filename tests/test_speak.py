@@ -56,3 +56,45 @@ def test_first_sentence_is_spoken_before_the_reply_has_finished():
     assert said_so_far[1] == []                      # after " sorry." nothing yet: the sentence might go on
     assert said_so_far[2] == ["I'm sorry."]          # the moment the next sentence starts, the first one is sent
     assert speaker.said == ["I'm sorry.", "Are you ok?"]
+
+
+VOICE_CFG = {"device": "cpu", "lang_code": "a", "repo": "fake", "voice": "v", "speed": 1.0,
+             "mute_tail_ms": 0, "output_device": None}
+
+
+class FakeTTS:
+    """Stands in for Kokoro: one short sound per sentence, and an error for the sentence 'boom'."""
+
+    def __init__(self, lang_code, repo_id, device):
+        pass
+
+    def __call__(self, sentence, voice, speed):
+        import torch
+        from types import SimpleNamespace
+
+        if sentence == "boom":
+            raise RuntimeError("out of memory")
+        return [SimpleNamespace(audio=torch.zeros(10))]
+
+
+def test_a_failed_sentence_does_not_block_the_speaker(monkeypatch, capsys):
+    from meldrt.pipeline.speak import Speaker
+
+    monkeypatch.setattr("meldrt.pipeline.speak.KPipeline", FakeTTS)
+    speaker = Speaker(VOICE_CFG, play=False)
+    speaker.start_reply()
+    speaker.say("boom")
+    speaker.say("All good.")
+    assert speaker.wait() is not None             # returns instead of hanging, and the second sentence was "spoken"
+    assert "could not speak a sentence" in capsys.readouterr().out
+
+
+def test_wait_returns_none_when_nothing_could_be_spoken(monkeypatch):
+    from meldrt.pipeline.speak import Speaker
+
+    monkeypatch.setattr("meldrt.pipeline.speak.KPipeline", FakeTTS)
+    speaker = Speaker(VOICE_CFG, play=False)
+    speaker.start_reply()
+    speaker.say("boom")
+    assert speaker.wait() is None
+

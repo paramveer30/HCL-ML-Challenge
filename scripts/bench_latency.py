@@ -2,7 +2,8 @@
 
 Clips are pushed in 32 ms frames at real-time pace, exactly like replay.py. Only WAV files are read.
 The voice prepares each sentence but stays silent; "first_audio" is when the first sound is ready
-to be handed to the sound card.
+to be handed to the sound card. With vision on, each clip's video pictures are pushed in at the moment
+they belong, and "image" is the time one picture takes (face detection plus the ViT).
 """
 import os
 
@@ -25,7 +26,7 @@ from meldrt.config import load_config
 from meldrt.pipeline.build import build_pipeline, build_speaker
 from meldrt.pipeline.speak import speak_while_streaming
 
-STAGES = ["endpoint", "asr", "audio", "text", "state", "first_token", "reply", "first_audio"]
+STAGES = ["endpoint", "asr", "audio", "text", "vision", "state", "first_token", "reply", "first_audio"]
 
 
 def gpu_used_mib():
@@ -58,6 +59,7 @@ def main():
     cfg = load_config()
     parser = argparse.ArgumentParser()
     parser.add_argument("--wav-dir", default=str(Path(cfg["data"]["wav_root"]) / "dev"))
+    parser.add_argument("--video-dir", default=str(Path(cfg["data"]["meld_root"]) / cfg["data"]["splits"]["dev"]["clips"]))
     parser.add_argument("--turns", type=int, default=50)
     parser.add_argument("--no-voice", action="store_true")
     args = parser.parse_args()
@@ -79,6 +81,7 @@ def main():
     n = pipeline.frame_samples
     frame_seconds = n / pipeline.sample_rate
     turns = []
+    image_ms = []        # one entry per video picture pushed in
     for path in sorted(Path(args.wav_dir).glob("*.wav")):
         if len(turns) >= args.turns:
             break
@@ -87,27 +90,35 @@ def main():
             continue
         wav = np.concatenate([wav, np.zeros(pipeline.sample_rate, dtype=np.float32)])
         pipeline.reset()
+        video = Path(args.video_dir) / (path.stem + ".mp4")
+        pictures = pipeline.read_video(video) if pipeline.weights3 is not None and video.exists() else []
         for start in range(0, len(wav) - n + 1, n):
             frame_start = time.perf_counter()
+            while pictures and pictures[0][0] <= start / pipeline.sample_rate:
+                image_start = time.perf_counter()
+                pipeline.push_image(pictures.pop(0)[1])
+                image_ms.append((time.perf_counter() - image_start) * 1000)
             state = pipeline.push_frame(wav[start : start + n])
             if state is not None:
                 events = pipeline.reply(state)
                 if speaker is not None:
                     events = speak_while_streaming(events, speaker)
                 final = list(events)[-1]
-                row = {**state.latency_ms, **final["latency_ms"], "audio_seconds": state.audio_seconds}
+                row = {**state.latency_ms, **final["latency_ms"], "audio_seconds": state.audio_seconds,
+                       "faces_seen": state.faces_seen}
                 if speaker is not None:
-                    speaker.wait()
-                    row["first_audio"] = (speaker.first_audio_at - pipeline.turn_ended_at) * 1000
+                    row["first_audio"] = (speaker.wait() - pipeline.turn_ended_at) * 1000
                 turns.append(row)
                 read_memory()
                 print(f"turn {len(turns):2d}  {path.name}  " + "  ".join(f"{k} {row[k]:.0f}" for k in STAGES if k in row),
                       flush=True)
             time.sleep(max(0.0, frame_seconds - (time.perf_counter() - frame_start)))
 
-    stages = [s for s in STAGES if s in turns[0]]
-    summary = {s: {"p50": float(np.percentile([t[s] for t in turns], 50)),
-                   "p95": float(np.percentile([t[s] for t in turns], 95))} for s in stages}
+    stages = [s for s in STAGES if any(s in t for t in turns)]
+    summary = {s: {"p50": float(np.percentile([t[s] for t in turns if s in t], 50)),
+                   "p95": float(np.percentile([t[s] for t in turns if s in t], 95))} for s in stages}
+    if image_ms:
+        summary["image"] = {"p50": float(np.percentile(image_ms, 50)), "p95": float(np.percentile(image_ms, 95))}
 
     print(f"\n{len(turns)} turns, clips of {min(t['audio_seconds'] for t in turns):.1f} to "
           f"{max(t['audio_seconds'] for t in turns):.1f} s")
@@ -115,6 +126,10 @@ def main():
     print("| --- | ---: | ---: |")
     for s in stages:
         print(f"| {s} | {summary[s]['p50']:.0f} | {summary[s]['p95']:.0f} |")
+    if image_ms:
+        with_face = sum(t["faces_seen"] > 0 for t in turns)
+        print(f"\none video picture (face detection + ViT): p50 {summary['image']['p50']:.0f} ms, "
+              f"p95 {summary['image']['p95']:.0f} ms over {len(image_ms)} pictures; {with_face} of {len(turns)} turns had a face")
 
     hardware = {
         "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else "none",

@@ -1,3 +1,5 @@
+import time
+
 import numpy as np
 import pytest
 
@@ -9,10 +11,12 @@ CFG = {
     "audio": {"sample_rate": 16000},
     "data": {"context_k": 2},
     "fusion": {"conflict_min_conf": 0.4},
+    "vision": {"frames_per_clip": 8},
     "reply": {"low_conf": 0.45},
     "pipeline": {
         "frame_samples": 512, "start_ms": 250, "end_silence_ms": 600, "max_turn_s": 15,
         "preroll_ms": 200, "history_turns": 3, "speaker_name": "Speaker", "input_device": None,
+        "warm_during_silence": False, "max_faces": 64,
     },
 }
 FRAME = np.zeros(512, dtype=np.float32)
@@ -52,14 +56,25 @@ class FakeAsr:
 class FakeClassifier:
     def __init__(self, p_text, p_audio):
         self.p_text, self.p_audio = p_text, p_audio
+        self.p_vision = None
         self.calls = []
+        self.audio_lengths = []
 
     def text_probs(self, context, target):
         self.calls.append((context, target))
         return self.p_text
 
     def audio_probs(self, wav):
+        self.audio_lengths.append(len(wav))
         return self.p_audio
+
+    def face_layers(self, frame):
+        # a frame that is all zeros has no face in it
+        return np.ones((13, 768), dtype=np.float32) if frame.any() else None
+
+    def vision_probs(self, layers):
+        self.faces_used = len(layers)
+        return self.p_vision
 
 
 ONE_TURN = [False] * 5 + [True] * 20 + [False] * 19      # 5 quiet, 20 speech, 19 quiet frames
@@ -196,7 +211,104 @@ def test_state_event_has_the_documented_shape():
     pipeline, _, _ = make(ONE_TURN, ["it was great"])
     event = run(pipeline, len(ONE_TURN))[-1].to_event()
     assert event["type"] == "state"
-    assert set(event) == {"type", "turn_id", "transcript", "emotion", "views", "tone_text_conflict", "audio_seconds", "latency_ms"}
+    assert set(event) == {"type", "turn_id", "transcript", "emotion", "views", "tone_text_conflict", "face_text_conflict",
+                          "faces_seen", "audio_seconds", "latency_ms"}
     assert set(event["emotion"]) == {"label", "confidence", "probs"}
     assert event["views"]["text"] == {"label": "joy", "confidence": 0.6}
     assert event["views"]["audio"] == {"label": "anger", "confidence": 0.7}
+
+
+def test_the_audio_model_is_kept_busy_only_while_waiting_for_the_end_of_a_turn():
+    cfg = {**CFG, "pipeline": {**CFG["pipeline"], "warm_during_silence": True}}
+    classifier = FakeClassifier(JOY, ANGER)
+    pipeline = Pipeline(FakeVad(ONE_TURN), FakeAsr(["hello"]), classifier, cfg, alpha=0.5, sample_rate=16000)
+    states = run(pipeline, len(ONE_TURN))
+    # 18 quiet frames inside the turn each get half a second of silence; the 19th ends the turn
+    assert classifier.audio_lengths[:18] == [8000] * 18
+    # then the real turn: 20 speech frames plus the lead-in kept from before it
+    assert len(classifier.audio_lengths) == 19 and classifier.audio_lengths[18] > 8000
+    assert states[-1].audio_view.label == "anger"
+
+
+def test_no_extra_work_when_warming_is_off():
+    pipeline, _, classifier = make(ONE_TURN, ["hello"])
+    run(pipeline, len(ONE_TURN))
+    assert len(classifier.audio_lengths) == 1
+
+
+# --- vision ---
+
+SADNESS = probs((4, 0.8), (0, 0.2))
+FACE = np.ones((120, 160, 3), dtype=np.uint8)
+NO_FACE = np.zeros((120, 160, 3), dtype=np.uint8)
+
+
+def make_with_vision(weights3=(0.5, 0.25, 0.25), p_text=JOY, p_audio=ANGER, p_vision=SADNESS):
+    classifier = FakeClassifier(p_text, p_audio)
+    classifier.p_vision = p_vision
+    pipeline = Pipeline(FakeVad(ONE_TURN), FakeAsr(["hello"]), classifier, CFG, alpha=0.5, sample_rate=16000, weights3=weights3)
+    return pipeline, classifier
+
+
+def test_without_vision_images_are_ignored_and_the_state_is_unchanged():
+    pipeline, _, _ = make(ONE_TURN, ["hello"])
+    pipeline.push_image(FACE)
+    state = run(pipeline, len(ONE_TURN))[-1]
+    assert state.vision_view is None and state.faces_seen == 0 and not state.face_text_conflict
+    assert state.probs["joy"] == pytest.approx(0.5 * 0.6)          # text and audio only, alpha 0.5
+
+
+def test_faces_seen_during_the_turn_join_the_fusion():
+    pipeline, classifier = make_with_vision()
+    for _ in range(3):
+        pipeline.push_image(FACE)
+    pipeline.push_image(NO_FACE)
+    state = run(pipeline, len(ONE_TURN))[-1]
+    assert classifier.faces_used == 3 and state.faces_seen == 3
+    assert state.vision_view == View(label="sadness", confidence=pytest.approx(0.8))
+    # by hand: 0.5 text + 0.25 audio + 0.25 vision
+    assert state.probs["joy"] == pytest.approx(0.5 * 0.6)
+    assert state.probs["anger"] == pytest.approx(0.25 * 0.7)
+    assert state.probs["sadness"] == pytest.approx(0.25 * 0.8)
+    assert state.probs["neutral"] == pytest.approx(0.5 * 0.4 + 0.25 * 0.3 + 0.25 * 0.2)
+    assert sum(state.probs.values()) == pytest.approx(1.0)
+    assert "vision" in state.latency_ms
+
+
+def test_a_face_from_before_the_turn_is_not_used():
+    pipeline, _ = make_with_vision()
+    pipeline.faces.append((time.perf_counter() - 60, np.ones((13, 768), dtype=np.float32)))
+    state = run(pipeline, len(ONE_TURN))[-1]
+    assert state.vision_view is None and state.faces_seen == 0
+    assert state.probs["joy"] == pytest.approx(0.5 * 0.6)          # falls back to text and audio
+
+
+def test_face_and_words_conflict_is_flagged_on_its_own():
+    pipeline, _ = make_with_vision(p_audio=JOY)
+    pipeline.push_image(FACE)
+    state = run(pipeline, len(ONE_TURN))[-1]
+    assert state.face_text_conflict and not state.tone_text_conflict
+
+
+def test_too_short_for_audio_uses_text_in_its_place_next_to_the_face():
+    pipeline, _ = make_with_vision(p_audio=None)
+    pipeline.push_image(FACE)
+    state = run(pipeline, len(ONE_TURN))[-1]
+    assert state.audio_view is None
+    assert state.probs["joy"] == pytest.approx(0.75 * 0.6)
+    assert state.probs["sadness"] == pytest.approx(0.25 * 0.8)
+
+
+def test_the_state_event_carries_the_face_view():
+    pipeline, _ = make_with_vision()
+    pipeline.push_image(FACE)
+    event = run(pipeline, len(ONE_TURN))[-1].to_event()
+    assert event["views"]["vision"] == {"label": "sadness", "confidence": 0.8}
+    assert event["face_text_conflict"] is True and event["faces_seen"] == 1
+
+
+def test_clearing_audio_also_forgets_the_faces():
+    pipeline, _ = make_with_vision()
+    pipeline.push_image(FACE)
+    pipeline.clear_audio()
+    assert len(pipeline.faces) == 0

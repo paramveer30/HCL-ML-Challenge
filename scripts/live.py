@@ -16,7 +16,7 @@ import warnings
 
 import sounddevice as sd
 
-from meldrt.pipeline.build import build_pipeline, build_speaker
+from meldrt.pipeline.build import build_pipeline, build_speaker, play_test_tone
 from meldrt.pipeline.display import show_reply, show_state, show_timing
 from meldrt.pipeline.speak import speak_while_streaming
 
@@ -33,7 +33,11 @@ def main():
     sys.stdout.reconfigure(errors="replace")
     warnings.filterwarnings("ignore")       # library deprecation notices would bury the conversation
 
-    print("loading models, this takes a few seconds...", flush=True)
+    if not args.no_voice:
+        print("Audio check... ", end="", flush=True)
+        play_test_tone()
+        print("you should have heard a tone :)", flush=True)
+    print("Loading models... takes a sec", flush=True)
     pipeline = build_pipeline(sample_rate=SAMPLE_RATE)
     pipeline.warm_up()
     speaker = None if args.no_voice else build_speaker()
@@ -66,8 +70,9 @@ def main():
                 if speaker is not None:
                     # the mic also hears the robot. Wait until it has finished, then throw away what was
                     # recorded meanwhile, so the robot never answers itself. This also means no barge-in.
-                    speaker.wait()
-                    first_audio_ms = (speaker.first_audio_at - pipeline.turn_ended_at) * 1000
+                    first_audio_at = speaker.wait()
+                    if first_audio_at is not None:
+                        first_audio_ms = (first_audio_at - pipeline.turn_ended_at) * 1000
                     while not frames.empty():
                         frames.get_nowait()
                     pipeline.clear_audio()

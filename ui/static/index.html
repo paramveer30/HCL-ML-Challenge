@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ML Challenge</title>
+  <link rel="icon" href="data:,">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="head">
+    <h1><span id="title"></span><span id="org"></span></h1>
+    <p class="by">By <span id="author"></span></p>
+    <p class="dim" id="email"></p>
+  </header>
+
+  <main>
+    <!-- the middle of the page: talk to it -->
+    <section class="talk-area" aria-label="Talk">
+      <p class="status" id="status" data-state="idle" role="status" aria-live="polite">status: <span id="status-text">ready</span><span class="cursor" aria-hidden="true">_</span></p>
+      <button class="talk" id="talk" type="button" aria-pressed="false">[ hold to talk ]</button>
+      <p class="dim">or hold the space bar</p>
+      <div class="more-controls">
+        <label for="clip" class="dim">replay a sample</label>
+        <select id="clip"></select>
+        <button id="play" type="button">[ play ]</button>
+        <label class="check"><input type="checkbox" id="mock" checked><span>mock mode</span></label>
+        <label class="check"><input type="checkbox" id="camera"><span>camera</span></label>
+        <button id="clear" type="button">[ clear ]</button>
+      </div>
+    </section>
+
+    <!-- two boxes: what was said, and the numbers behind it -->
+    <div class="boxes">
+      <section class="box" aria-labelledby="log-title">
+        <h2 id="log-title">conversation</h2>
+        <ol id="log" aria-live="polite"></ol>
+        <p class="dim" id="log-empty">nothing yet. hold the button and say something.</p>
+      </section>
+
+      <section class="box" aria-labelledby="hood-title">
+        <h2 id="hood-title">under the hood</h2>
+        <p class="emotion" id="emotion">&gt; waiting for a voice</p>
+        <p class="dim" id="emotion-note">the emotion shows up here after a turn</p>
+
+        <h3>probabilities</h3>
+        <div class="scroll">
+          <table class="matrix">
+            <thead><tr><th></th><th>words</th><th>voice</th><th>face</th><th>fused</th></tr></thead>
+            <tbody id="matrix-rows"></tbody>
+          </table>
+        </div>
+
+        <h3>timing in ms, last 10 turns</h3>
+        <div class="scroll">
+          <table class="timing">
+            <thead><tr><th>turn</th><th>transcript</th><th>emotion</th><th>first word</th><th>total</th></tr></thead>
+            <tbody id="timing-rows"><tr><td colspan="5" class="dim">n/a</td></tr></tbody>
+          </table>
+        </div>
+        <p class="dim small">total is from the end of the turn to the first spoken audio.</p>
+
+        <h3>camera</h3>
+        <div id="camera-body"><p class="dim">off</p></div>
+        <p class="dim small" id="faces-note">tick camera to let the face model see you while you talk. images stay on this computer.</p>
+      </section>
+    </div>
+  </main>
+
+  <footer class="foot dim">runs on this machine only. nothing leaves it.</footer>
+
+  <script src="config.js"></script>
+  <script src="camera.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

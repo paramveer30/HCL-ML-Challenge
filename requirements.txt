@@ -16,3 +16,7 @@ kokoro==0.9.4
 psutil==7.2.2
 # kokoro needs spaCy's small English model once, before going offline:
 #   python -m spacy download en_core_web_sm
+fastapi==0.143.0
+uvicorn==0.54.0
+websockets==17.2
+opencv-python-headless==5.0.0.93

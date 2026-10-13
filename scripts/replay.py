@@ -33,23 +33,29 @@ def handle_turn(pipeline, speaker, state, with_reply, as_json):
     done = show_reply(events)
     first_audio_ms = None
     if speaker is not None:
-        speaker.wait()
-        first_audio_ms = (speaker.first_audio_at - pipeline.turn_ended_at) * 1000
+        first_audio_at = speaker.wait()
+        if first_audio_at is not None:
+            first_audio_ms = (first_audio_at - pipeline.turn_ended_at) * 1000
     show_timing(state, done, first_audio_ms)
 
 
-def replay(pipeline, speaker, path, real_time, with_reply, as_json):
+def replay(pipeline, speaker, path, real_time, with_reply, as_json, video=None):
     wav, sample_rate = sf.read(path, dtype="float32")
     if wav.ndim != 1 or sample_rate != pipeline.sample_rate:
         raise ValueError(f"{path}: expected mono {pipeline.sample_rate} Hz audio")
     # one second of silence after the clip, so the pipeline can hear that the turn is over
     wav = np.concatenate([wav, np.zeros(pipeline.sample_rate, dtype=np.float32)])
 
+    # with a video, its pictures go in at the moment they belong, like a camera next to the microphone
+    pictures = pipeline.read_video(video) if video else []
+
     n = pipeline.frame_samples
     frame_seconds = n / sample_rate
     turns = 0
     for start in range(0, len(wav) - n + 1, n):
         frame_start = time.perf_counter()
+        while pictures and pictures[0][0] <= start / sample_rate:
+            pipeline.push_image(pictures.pop(0)[1])
         state = pipeline.push_frame(wav[start : start + n])
         if state is not None:
             turns += 1
@@ -64,6 +70,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("wavs", nargs="+", help="16 kHz mono WAV files")
     parser.add_argument("--label", help="the true emotion, printed next to the result (one WAV only)")
+    parser.add_argument("--video", help="the clip's mp4, so the face model sees it too (one WAV only, real-time pace)")
     parser.add_argument("--fast", action="store_true", help="push frames as fast as possible instead of in real time")
     parser.add_argument("--no-reply", action="store_true", help="print the state only")
     parser.add_argument("--no-voice", action="store_true", help="print the reply without speaking it")
@@ -74,7 +81,7 @@ def main():
     sys.stdout.reconfigure(errors="replace")
     warnings.filterwarnings("ignore")       # library deprecation notices would bury the output
 
-    print("loading models, this takes a few seconds...", flush=True)
+    print("Loading models... takes a sec", flush=True)
     pipeline = build_pipeline(sample_rate=16000)
     pipeline.warm_up()
     speaker = None if args.no_voice or args.no_reply else build_speaker()
@@ -82,7 +89,8 @@ def main():
     for path in args.wavs:
         print(f"\n=== {path}" + (f"   (true label: {args.label})" if args.label else ""))
         pipeline.reset()        # each file is its own conversation
-        replay(pipeline, speaker, path, real_time=not args.fast, with_reply=not args.no_reply, as_json=args.json)
+        replay(pipeline, speaker, path, real_time=not args.fast, with_reply=not args.no_reply, as_json=args.json,
+               video=args.video)
 
 
 if __name__ == "__main__":

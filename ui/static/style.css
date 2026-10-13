@@ -1,0 +1,113 @@
+/* Terminal look: black page, white monospace text, thin white boxes, lots of room.
+   Title on top, the talk button in the middle, two boxes under it.
+   Every color, size and font is a variable here, so the palette can be replaced in one edit. */
+:root {
+  color-scheme: dark;
+  --bg: #000000;
+  --text: #ffffff;
+  --dim: #9a9a9a;            /* secondary text */
+  --faint: #3d3d3d;          /* empty bar cells, table rules */
+  --line: #ffffff;           /* box borders */
+  --model-text: #ffffff;     /* bar color per model, all white in this theme */
+  --model-audio: #ffffff;
+  --model-vision: #ffffff;
+  --model-fused: #ffffff;
+  --alert: #ffffff;          /* the disagree note */
+  --radius: 0;
+  --font: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+  --size: 16px;
+  --width: 1480px;
+  --pad: 56px;               /* page side padding */
+  --box-pad: 40px;           /* room inside a box */
+}
+
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font); font-size: var(--size); line-height: 2; letter-spacing: 0.03em; word-spacing: 0.18em; }
+h1, h2, h3, p, ol { margin: 0; padding: 0; font-size: inherit; font-weight: 400; }
+button, select, input { font: inherit; color: inherit; letter-spacing: inherit; word-spacing: inherit; }
+:focus-visible { outline: 1px solid var(--text); outline-offset: 6px; }
+.dim { color: var(--dim); }
+.small { font-size: 0.85em; }
+
+.head, main, .foot { max-width: var(--width); margin: 0 auto; padding-left: var(--pad); padding-right: var(--pad); }
+
+/* title and by-line, centered at the top */
+.head { text-align: center; padding-top: 72px; }
+.head h1 { font-size: 2.1em; line-height: 1.5; letter-spacing: 0.06em; }
+.head h1 span { display: block; }
+.head .by { margin-top: 28px; font-size: 1.15em; }
+
+/* the middle of the page: status, the talk button, the smaller controls */
+.talk-area { display: flex; flex-direction: column; align-items: center; gap: 22px; padding: 88px 0 96px; text-align: center; }
+.cursor { display: none; }
+.status:not([data-state="idle"]) .cursor { display: inline; animation: blink 1s steps(1) infinite; }
+button { background: none; border: 0; border-radius: var(--radius); padding: 6px 4px; cursor: pointer; }
+button:hover { text-decoration: underline; text-underline-offset: 7px; }
+button:disabled { color: var(--faint); cursor: default; text-decoration: none; }
+.talk { border: 1px solid var(--line); padding: 26px 72px; font-size: 1.35em; letter-spacing: 0.1em; margin-top: 6px; }
+.talk:hover, .talk[aria-pressed="true"] { background: var(--text); color: var(--bg); text-decoration: none; }
+.more-controls { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 18px 40px; margin-top: 36px; }
+select { background: var(--bg); border: 1px solid var(--dim); border-radius: var(--radius); padding: 8px 14px; max-width: 100%; }
+.check { display: inline-flex; gap: 14px; align-items: center; cursor: pointer; }
+.check input { appearance: none; margin: 0; width: 15px; height: 15px; border: 1px solid var(--text); border-radius: var(--radius); }
+.check input:checked { background: var(--text); }
+
+/* two boxes side by side, each with its name sitting on the top border */
+.boxes { display: grid; grid-template-columns: minmax(0, 9fr) minmax(0, 11fr); gap: 56px; align-items: start; }
+.box { border: 1px solid var(--line); padding: var(--box-pad); padding-top: 0; display: flex; flex-direction: column; gap: 22px; min-width: 0; min-height: 420px; }
+.box > h2 { align-self: flex-start; background: var(--bg); padding: 0 16px; margin: -1em 0 14px -16px; letter-spacing: 0.08em; }
+.box h3 { color: var(--dim); margin-top: 26px; }
+
+/* conversation: one entry per turn, like a shell session */
+#log { list-style: none; display: flex; flex-direction: column; gap: 30px; max-height: 640px; overflow-y: auto; }
+.line { display: grid; grid-template-columns: 9ch minmax(0, 1fr); column-gap: 3ch; }
+.line .who { color: var(--dim); }
+.line .words { overflow-wrap: anywhere; }
+.line .meta { grid-column: 2; color: var(--dim); margin-top: 4px; }
+.line .meta .alert { color: var(--alert); display: block; }
+.line.note .words { color: var(--dim); }
+.line.robot.streaming .words::after { content: "_"; animation: blink 1s steps(1) infinite; }
+
+/* under the hood */
+.emotion { font-size: 1.9em; line-height: 1.4; overflow-wrap: anywhere; }
+.scroll { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; letter-spacing: 0; word-spacing: 0.1em; }
+th, td { font-weight: 400; text-align: left; padding: 7px 1.5ch 7px 0; white-space: nowrap; color: var(--dim); }
+th:last-child, td:last-child { padding-right: 0; }
+thead th { padding-bottom: 14px; border-bottom: 1px solid var(--faint); }
+tbody tr:first-child th, tbody tr:first-child td { padding-top: 16px; }
+.matrix td .off { color: var(--faint); }
+.matrix td.is-top { color: var(--text); }
+.matrix td.is-top::after { content: " *"; }
+.matrix td:nth-child(2).is-top .on { color: var(--model-text); }
+.matrix td:nth-child(3).is-top .on { color: var(--model-audio); }
+.matrix td:nth-child(4).is-top .on { color: var(--model-vision); }
+.matrix td:nth-child(5).is-top .on { color: var(--model-fused); }
+.timing th, .timing td { text-align: right; padding-left: 4ch; padding-right: 0; }
+.timing th:first-child, .timing td:first-child, .timing td.dim { text-align: left; padding-left: 0; }
+.timing td { color: var(--text); }
+#camera-body video { width: 100%; max-width: 480px; border: 1px solid var(--faint); display: block; }
+
+.foot { text-align: center; padding-top: 72px; padding-bottom: 72px; }
+
+@keyframes blink { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .cursor, .line.robot.streaming .words::after { animation: none; } }
+
+/* laptop screens: the same layout with a little less padding, so the table still fits its box */
+@media (max-width: 1420px) {
+  :root { --pad: 32px; --box-pad: 28px; }
+  .boxes { gap: 36px; }
+  th, td { padding-right: 1ch; }
+}
+
+/* narrow screens: one box under the other, a little less padding */
+@media (max-width: 1100px) {
+  :root { --pad: 20px; --box-pad: 22px; --size: 14px; }
+  .head { padding-top: 44px; }
+  .head h1 { font-size: 1.6em; }
+  .talk-area { padding: 56px 0 64px; }
+  .talk { padding: 22px 36px; }
+  .boxes { grid-template-columns: minmax(0, 1fr); gap: 48px; }
+  .box { min-height: 0; }
+  #log { max-height: none; }
+}

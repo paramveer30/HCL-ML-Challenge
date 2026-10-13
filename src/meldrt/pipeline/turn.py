@@ -2,10 +2,10 @@
 import math
 import time
 from collections import deque
-from concurrent.futures import ThreadPoolExecutor
 
 import numpy as np
 
+from meldrt.data.video import read_timed_frames
 from meldrt.labels import LABELS
 from meldrt.models.fusion import late_fuse, tone_text_conflict
 from meldrt.models.text import format_target
@@ -26,7 +26,7 @@ def view_of(probs):
 
 
 class Pipeline:
-    def __init__(self, vad, asr, classifier, cfg, alpha, sample_rate):
+    def __init__(self, vad, asr, classifier, cfg, alpha, sample_rate, weights3=None):
         p = cfg["pipeline"]
         if sample_rate != cfg["audio"]["sample_rate"]:
             raise ValueError(f"expected {cfg['audio']['sample_rate']} Hz audio, got {sample_rate}")
@@ -49,7 +49,13 @@ class Pipeline:
         self.history = deque(maxlen=p["history_turns"])     # dicts with transcript, label, reply
         self.turn_id = 0
         self.turn_ended_at = 0.0     # clock reading when the latest turn was decided to be over
-        self.pool = ThreadPoolExecutor(2)
+        self.warm_during_silence = p["warm_during_silence"]
+        self.warm_wav = np.zeros(sample_rate // 2, dtype=np.float32)
+        # vision is on when the three-model weights (text, audio, vision) are given
+        self.weights3 = weights3
+        self.frames_per_clip = cfg["vision"]["frames_per_clip"]
+        self.max_turn_s = p["max_turn_s"]
+        self.faces = deque(maxlen=p["max_faces"])     # (clock reading, face features) of recent camera frames
 
     def push_frame(self, frame):
         """frame: float32 array of exactly frame_samples samples. Returns a TurnState when a turn just ended."""
@@ -64,9 +70,27 @@ class Pipeline:
             return self.finish_turn()
         elif self.endpointer.in_turn:
             self.turn.append(frame)
+            if self.warm_during_silence and self.endpointer.silence_run > 0:
+                # the turn may be about to end. The GPU slows down while it sits idle during the speech,
+                # so we give it half a second of silence to chew on and throw the answer away
+                self.classifier.audio_probs(self.warm_wav)
         else:
             self.recent.append(frame)
         return None
+
+    def push_image(self, frame):
+        """frame: one BGR image from a camera or a video. If it shows a face, the face is remembered
+        with the time it arrived, so the turn being spoken can use it."""
+        if self.weights3 is None:
+            return
+        layers = self.classifier.face_layers(frame)
+        if layers is not None:
+            self.faces.append((time.perf_counter(), layers))
+
+    def read_video(self, path):
+        """The pictures of a clip's video the face model should see: (seconds into the clip, BGR image) pairs,
+        spread evenly over it, the same number as when the features were cached for training."""
+        return read_timed_frames(path, self.frames_per_clip, self.max_turn_s)
 
     def finish_turn(self):
         # drop the silence that told us the turn was over
@@ -79,11 +103,9 @@ class Pipeline:
     def process_turn(self, wav, endpoint_ms):
         """One finished turn of audio to a TurnState. Returns None if no words were recognized."""
         start = self.turn_ended_at = time.perf_counter()
-        # speech recognition and the audio model start together; the audio model does not need the words
-        asr_job = self.pool.submit(timed, self.asr.transcribe, wav)
-        audio_job = self.pool.submit(timed, self.classifier.audio_probs, wav)
-        transcript, asr_ms = asr_job.result()
-        p_audio, audio_ms = audio_job.result()
+        # one after the other: on a single GPU the two models are slower side by side (see DECISIONS.md)
+        p_audio, audio_ms = timed(self.classifier.audio_probs, wav)
+        transcript, asr_ms = timed(self.asr.transcribe, wav)
         if not transcript:
             return None
 
@@ -91,12 +113,24 @@ class Pipeline:
         context = "\n".join(format_target(self.speaker, turn["transcript"]) for turn in previous)
         p_text, text_ms = timed(self.classifier.text_probs, context, format_target(self.speaker, transcript))
 
+        # the faces seen while this turn was being spoken: from its first sample to now
+        turn_started = start - endpoint_ms / 1000 - len(wav) / self.sample_rate
+        faces = [layers for seen_at, layers in self.faces if seen_at >= turn_started]
+        p_vision, vision_ms = timed(self.classifier.vision_probs, faces) if faces else (None, 0.0)
+
         if p_audio is None:
             fused, audio_view, conflict = p_text, None, False
         else:
             fused = late_fuse(p_text, p_audio, self.alpha)
             audio_view = view_of(p_audio)
             conflict = tone_text_conflict(p_text, p_audio, self.min_conf)
+        vision_view, face_conflict = None, False
+        if p_vision is not None:
+            # with a face all three are blended; a turn too short for the audio model uses text in its place
+            w_text, w_audio, w_vision = self.weights3
+            fused = w_text * p_text + w_audio * (p_text if p_audio is None else p_audio) + w_vision * p_vision
+            vision_view = view_of(p_vision)
+            face_conflict = tone_text_conflict(p_text, p_vision, self.min_conf)
 
         self.turn_id += 1
         state = TurnState(
@@ -110,7 +144,12 @@ class Pipeline:
             tone_text_conflict=conflict,
             audio_seconds=len(wav) / self.sample_rate,
             latency_ms={"endpoint": endpoint_ms, "asr": asr_ms, "audio": audio_ms, "text": text_ms},
+            vision_view=vision_view,
+            face_text_conflict=face_conflict,
+            faces_seen=len(faces),
         )
+        if faces:
+            state.latency_ms["vision"] = vision_ms
         state.latency_ms["state"] = (time.perf_counter() - start) * 1000
         self.history.append({"transcript": transcript, "label": state.label, "reply": ""})
         return state
@@ -134,6 +173,7 @@ class Pipeline:
         """Throws away any audio heard so far, but keeps the conversation. Used after the robot has spoken."""
         self.recent.clear()
         self.turn = []
+        self.faces.clear()
         self.endpointer = Endpointer(self.frame_ms, *self.endpoint_settings)
         self.vad.reset()
 
