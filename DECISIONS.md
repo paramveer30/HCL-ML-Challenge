@@ -62,13 +62,20 @@ Decision: one ffmpeg call per clip, 6 in parallel, output cut at 15 s (the live 
 Tradeoff: clips longer than 15 s lose their tail in training, the same way a live turn would.
 
 ## 2026-10-12: Text cleanup
-Context: the MELD CSVs use curly quotes, ellipsis characters, and long dashes (about 3,550 curly apostrophes in train alone), and show up as junk like `â€™` if the file is read with the wrong encoding.
+Context: the CSVs in the raw release store apostrophes, ellipses, and long dashes as cp1252 control characters (U+0092, U+0085, U+0097; 414 apostrophes in dev alone). The copy on GitHub has the same text with curly punctuation instead, and either shows up as junk like `â€™` if read with the wrong encoding.
 Decision: read the CSVs as UTF-8 and replace a small explicit map of characters with plain ASCII (`'`, `"`, `...`, `--`), then collapse whitespace. Accented letters are left alone.
 Tradeoff: an explicit map only fixes what we listed. Anything new would pass through unchanged.
+
+## 2026-10-12: Data counts after extraction
+Context: we need to know exactly which utterances have audio before training anything.
+Measured: CSV rows are 9,989 / 1,109 / 2,610 (train / dev / test) in 1,038 / 114 / 280 dialogues, matching the paper. Extracted WAVs: 9,988 / 1,112 / 2,615. Two utterances have no audio: train `dia125_utt3` (the mp4 is corrupt, ffmpeg reports invalid data) and dev `dia110_utt7` (no mp4 in the release). Every test row has a WAV. The dev and test folders hold a few clips with no CSV row, and the test folder has 132 extra `final_videos_test*` files that we ignore. Dev extraction took 33 s for 1,112 clips. Total audio is about 11.9 hours (median clip 2.5 s, 37 clips at the 15 s cap). Feature caching: 13,477 files, 258 MB, every file checked for shape, dtype, and finite values; train and test (12,603 clips) took 6 min 41 s, about 32 ms per clip.
+Decision: keep both utterances in the text data and treat them as "no audio", the same as clips under 0.3 s.
+Tradeoff: fusion needs a text-only fallback for a handful of utterances.
 
 ## 2026-10-12: Clips under 0.3 s get no audio features (pending approval)
 Context: measured on the 1660 Ti, WavLM-base-plus on a clip of 0.2 s or less allocates 9.9 GB and takes 2.5 to 4 s. From 0.25 s up it peaks at 387 to 557 MiB and takes 35 to 90 ms (15 s clip: 90 ms).
 Decision: `audio.min_seconds: 0.3`. Shorter clips are skipped by the caching script and listed in `skipped.txt`.
+Measured on the full dataset: 164 / 20 / 54 clips skipped in train / dev / test. Counting CSV rows, and adding the corrupt and the missing clip, 165 / 21 / 53 rows (about 2% of each split) have no audio features.
 Tradeoff: those utterances have no audio prediction, so fusion has to fall back to text for them. The live pipeline needs the same guard.
 
 ## 2026-10-01: Class weights 1/sqrt(n) (pending approval)
