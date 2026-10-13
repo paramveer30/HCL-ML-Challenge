@@ -33,6 +33,16 @@ def load_split(name, cfg):
     return df
 
 
+def build_context(df, i, k=2):
+    """Previous k utterances from the same dialogue as row i, oldest first, as 'Speaker: text' lines."""
+    row = df.iloc[i]
+    same_dialogue = df[df["Dialogue_ID"] == row["Dialogue_ID"]]
+    # only earlier lines: the live system never sees the future
+    earlier = same_dialogue[same_dialogue["Utterance_ID"] < row["Utterance_ID"]]
+    previous = earlier.sort_values("Utterance_ID").tail(k)
+    return "\n".join(f"{speaker}: {text}" for speaker, text in zip(previous["Speaker"], previous["Utterance"]))
+
+
 if __name__ == "__main__":
     # prints row counts and how many utterances have an extracted WAV
     cfg = load_config()
