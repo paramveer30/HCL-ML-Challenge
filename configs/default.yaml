@@ -26,3 +26,13 @@ text:
   class_weighting: sqrt_inv          # sqrt_inv, inv, or none (see DECISIONS.md)
   checkpoint_dir: checkpoints/text
   run_dir: runs/text
+
+audio_head:
+  hidden: 256
+  dropout: 0.2
+  lr: 1.0e-3
+  batch_size: 64
+  epochs: 30
+  class_weighting: sqrt_inv          # same scheme as the text model
+  checkpoint: checkpoints/audio/best.pt
+  run_dir: runs/audio

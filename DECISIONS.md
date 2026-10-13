@@ -90,7 +90,19 @@ Decision: the input is a sentence pair, `context` and `Speaker: utterance`, whic
 Dependencies: none new. Evaluation metrics come from scikit-learn (`f1_score`, `confusion_matrix`) with all 7 labels passed explicitly, so a class nobody predicts counts as 0 in macro F1 instead of being dropped.
 Tradeoff: one seed only.
 
-## 2026-10-01: Class weights 1/sqrt(n) (pending approval)
-Context: neutral is close to half of MELD; fear and disgust are a few percent each.
-Decision: cross-entropy weights $w_c \propto 1/\sqrt{n_c}$.
+## 2026-10-12: Class weights 1/sqrt(n)
+Context: neutral is 47.2% of train (4,710 of 9,989); fear and disgust are 268 and 271.
+Decision: cross-entropy weights $w_c \propto 1/\sqrt{n_c}$, scaled to mean 1, for both models. On the real counts that is 0.40 for neutral and 1.66 for fear, so a mistake on fear costs about 4 times a mistake on neutral. Full inverse frequency would make it about 18 times.
 Tradeoff: milder than full inverse frequency, so rare classes still get under-predicted somewhat, but the majority class isn't wrecked.
+
+## 2026-10-12: Text model result on dev
+Measured (seed 0, 3 epochs, 503 s on the 1660 Ti): dev weighted F1 / macro F1 per epoch were 0.591 / 0.432, 0.615 / 0.479, 0.612 / 0.486. Epoch 2 is kept (best dev weighted F1): **0.615 weighted, 0.479 macro**. Always predicting neutral scores 0.252 / 0.085 on dev.
+Per class on dev: neutral 0.760, joy 0.605, surprise 0.661, anger 0.418, sadness 0.429, disgust 0.200, fear 0.282.
+
+## 2026-10-12: Audio head settings and result on dev
+Context: the head trains on cached features, so we can afford many epochs and pick the best on dev.
+Decision: 13 learned layer scores (softmax, start equal), then 768 to 256, ReLU, dropout 0.2, 256 to 7: 198,676 parameters. AdamW, lr 1e-3, batch 64, 30 epochs, same class weights as text, features used as cached with no extra normalization. Trained on the 9,824 train rows that have audio; the best epoch is chosen by dev weighted F1 on the 1,088 dev rows that have audio.
+Measured (seed 0, 25 s on the GPU; the CPU gives the same predictions): best epoch 17, **0.502 weighted, 0.361 macro** on dev rows with audio. Over all 1,109 dev rows, predicting neutral for the 21 with no audio, 0.500 / 0.358.
+Per class on dev (all rows): neutral 0.663, joy 0.336, surprise 0.437, anger 0.483, sadness 0.356, disgust 0.000, fear 0.233. Audio beats text on anger only.
+Learned layer weights (layer 0 to 12): 0.048, 0.043, 0.043, 0.047, 0.043, 0.043, 0.064, 0.094, 0.150, 0.182, 0.121, 0.087, 0.036. Layers 8 to 10 carry 45% of the weight; equal weights would be 0.077 each.
+Tradeoff: picking the best of 30 noisy epochs on dev makes the dev number a little optimistic. Test will tell.
