@@ -213,3 +213,18 @@ The microphone hears the robot, so `live.py` waits until the voice has finished 
 Measured: 10 dev clips replayed in real time with the voice on. Time after the turn ended, median / max: state 519 / 672 ms, first reply token 673 / 788 ms, full reply 871 / 1,114 ms, first spoken audio 977 / 2,049 ms. The 2,049 ms was the first turn, before a warm-up sentence was added at start-up; in a later run of four clips the first turn took 1,221 ms and the others 858 to 937 ms. The target for first audio was 2,000 ms.
 Tradeoff: a one-sentence reply is only spoken once it is complete, because we cannot know it has ended until then.
 
+## 2026-10-12: Parameter count
+Context: the brief caps the complete local inference path at 6 billion learned parameters, counting total parameters of every required component.
+Decision: `scripts/count_params.py` builds the real pipeline and counts from what it loads. PyTorch models (Silero, RoBERTa, WavLM, the audio head, Kokoro) are counted from the loaded objects. Whisper is counted by reading the tensor shapes in the CTranslate2 `model.bin` that faster-whisper loads, and the reply model by reading the tensor shapes in the GGUF file that Ollama loads. Two small extras are included because they are learned and on the path: Kokoro's voice embedding and the spaCy model Kokoro uses to read text. The script exits with an error above the cap.
+Measured: Silero VAD 462,594; Whisper small.en 241,761,792; RoBERTa-base with head 124,651,015; WavLM-base-plus 94,381,936; audio head 198,676; qwen2.5:1.5b 1,543,714,304; Kokoro-82M 81,810,022; Kokoro voice embedding 130,560; spaCy `en_core_web_sm` 1,570,514. **Total 2,088,681,413, 34.8% of the cap.**
+Tradeoff: buffers that are not parameters (for example normalization statistics) are not counted. Settings stored as scalars in the Whisper file are skipped.
+Dependency: `psutil` 7.2.2 for the memory readings in the benchmark (it was already installed as a dependency of `accelerate`).
+
+## 2026-10-12: Latency and memory benchmark
+Context: the delays and resource use have to be measured, not estimated, over at least 50 turns.
+Decision: `scripts/bench_latency.py` pushes dev clips of at least one second through the live pipeline in 32 ms frames at real-time pace until 50 turns have been processed, one conversation per clip. The voice prepares every sentence but stays silent, so `first_audio` is the moment the first sound is ready for the sound card. The reply model is unloaded first so the GPU baseline does not include it.
+Measured (50 turns of 0.5 to 7.4 s, median 1.7 s; ms after the turn was judged over; p50 / p95): speech recognition 563 / 696, audio branch 455 / 521, text model 15 / 20, **state 576 / 713**, **first reply token 732 / 916**, **full reply 968 / 1,327**, **first spoken sound 996 / 1,260**. Endpointing adds 608 ms before all of these. Targets were 600, 1,500, 3,000, and 2,000 ms at p50: all met at p50; the state met its target on 58% of turns and the other three on every turn.
+Memory: GPU 1,858 MiB before loading (other programs), 5,365 MiB at peak, so 3,507 MiB for the system, of which PyTorch held 1,569 MiB. RAM peak 2,440 MiB for our process plus Ollama. A browser was open during the run.
+A mistake found by measuring: the first version read `nvidia-smi` and the process list twice a second from a second thread. That made the pipeline itself slower: state 1,147 / 1,726 ms, and the text model's p95 was 876 ms instead of 20. Memory is now read between turns only. Before: state p50 1,147 ms. After: 576 ms.
+Tradeoff: reading memory between turns can miss a short spike inside a turn. PyTorch's own peak counter (1,569 MiB) does not have that gap.
+

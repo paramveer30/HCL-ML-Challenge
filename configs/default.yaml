@@ -44,6 +44,8 @@ fusion:
 
 eval:
   run_dir: runs/final_eval
+  bench_dir: runs/bench
+  max_params: 6000000000             # the challenge's cap on learned parameters
 
 pipeline:
   frame_samples: 512                 # 32 ms at 16 kHz, the frame size Silero VAD expects

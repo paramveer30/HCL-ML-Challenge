@@ -32,7 +32,8 @@ class SentenceChunker:
 
 
 class Speaker:
-    def __init__(self, voice_cfg):
+    def __init__(self, voice_cfg, play=True):
+        self.play = play                 # False: prepare the sound but stay silent (used for timing runs)
         device = voice_cfg["device"] if torch.cuda.is_available() else "cpu"
         self.tts = KPipeline(lang_code=voice_cfg["lang_code"], repo_id=voice_cfg["repo"], device=device)
         self.voice = voice_cfg["voice"]
@@ -67,8 +68,9 @@ class Speaker:
             audio = self.sounds.get()
             if self.first_audio_at is None:
                 self.first_audio_at = time.perf_counter()
-            sd.play(audio, KOKORO_SAMPLE_RATE)
-            sd.wait()
+            if self.play:
+                sd.play(audio, KOKORO_SAMPLE_RATE)
+                sd.wait()
             self.sounds.task_done()
 
     def wait(self):

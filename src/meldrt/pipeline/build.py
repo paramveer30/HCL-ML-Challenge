@@ -24,5 +24,5 @@ def build_pipeline(sample_rate):
     return Pipeline(vad, asr, classifier, cfg, alpha, sample_rate)
 
 
-def build_speaker():
-    return Speaker(load_config()["voice"])
+def build_speaker(play=True):
+    return Speaker(load_config()["voice"], play=play)
