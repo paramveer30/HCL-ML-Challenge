@@ -106,3 +106,55 @@ Measured (seed 0, 25 s on the GPU; the CPU gives the same predictions): best epo
 Per class on dev (all rows): neutral 0.663, joy 0.336, surprise 0.437, anger 0.483, sadness 0.356, disgust 0.000, fear 0.233. Audio beats text on anger only.
 Learned layer weights (layer 0 to 12): 0.048, 0.043, 0.043, 0.047, 0.043, 0.043, 0.064, 0.094, 0.150, 0.182, 0.121, 0.087, 0.036. Layers 8 to 10 carry 45% of the weight; equal weights would be 0.077 each.
 Tradeoff: picking the best of 30 noisy epochs on dev makes the dev number a little optimistic. Test will tell.
+
+## 2026-10-12: Fusion weight chosen on dev
+Context: late fusion needs one number, the weight on text.
+Decision: grid search over 0, 0.05, ..., 1 on dev weighted F1, smaller alpha on ties. Rows with no audio use text alone. Result: **alpha = 0.45**, dev weighted F1 0.6346 (text alone 0.6150, audio alone 0.5000).
+Measured curve on dev: 0.505 at alpha 0, 0.586 at 0.30, 0.623 at 0.40, 0.635 at 0.45, 0.627 at 0.50, then between 0.619 and 0.629 up to 0.90, and 0.615 at 1. So the curve is nearly flat from 0.40 to 0.85, and 0.45 is a single high point on it.
+Note: alpha below 0.5 does not mean audio is the better model. The audio head's probabilities are less peaked than the text model's, so they need a larger weight to change the answer at all.
+Conflict flag: text and audio top labels differ and both top probabilities are at least 0.4 (`fusion.conflict_min_conf`, pending approval; it does not affect any score).
+
+## 2026-10-12: Final result on test (read once)
+Context: `scripts/final_eval.py` is the only code that reads the test split. It was checked first with `--split dev`, where it reproduced the saved dev numbers exactly, and then run once on test at 22:19 with everything frozen: text checkpoint (epoch 2), audio head (epoch 17), alpha 0.45. Seed 0, one seed.
+
+| Model | Dev weighted F1 | Dev macro F1 | Test weighted F1 | Test macro F1 |
+| --- | --- | --- | --- | --- |
+| Majority (neutral) | 0.2523 | 0.0850 | 0.3127 | 0.0928 |
+| Text only | 0.6150 | 0.4792 | 0.6384 | 0.4685 |
+| Audio only | 0.5000 | 0.3582 | 0.4747 | 0.2927 |
+| Fused (alpha 0.45) | 0.6346 | 0.4951 | 0.6369 | 0.4588 |
+
+Test has 2,610 rows; 2,557 have audio. For the 53 without, audio only predicts neutral and fused uses text alone.
+
+Per-class F1 on test:
+
+| Emotion | n | Text only | Audio only | Fused |
+| --- | --- | --- | --- | --- |
+| neutral | 1256 | 0.793 | 0.664 | 0.793 |
+| joy | 402 | 0.602 | 0.347 | 0.605 |
+| surprise | 281 | 0.581 | 0.334 | 0.591 |
+| anger | 345 | 0.441 | 0.328 | 0.443 |
+| sadness | 208 | 0.415 | 0.243 | 0.395 |
+| disgust | 68 | 0.237 | 0.057 | 0.182 |
+| fear | 50 | 0.211 | 0.077 | 0.203 |
+
+Fused confusion matrix on test (rows true, columns predicted, order neutral, joy, surprise, anger, sadness, disgust, fear):
+
+```
+neutral   1064   66   68   17   29    8    4
+joy        100  240   40   14    6    2    0
+surprise    36   24  203    9    5    1    3
+anger       93   39   63  119    6   17    8
+sadness     84   16   18   16   65    4    5
+disgust     29    3    9   12    4   10    1
+fear        23    3    5    5    6    0    8
+```
+
+What it says:
+- Both models beat the majority baseline by a wide margin. Text is the strong one.
+- **Fusion did not help on test.** It gained 0.020 weighted F1 on dev and lost 0.0015 on test (macro: +0.016 on dev, -0.010 on test). The dev gain did not carry over.
+- On test, fusion helps a little on joy, surprise, and anger, and hurts sadness, disgust, and fear.
+- Audio alone is weaker on test (0.475) than on dev (0.500). Picking the best of 30 epochs on 1,088 dev rows made the dev number optimistic.
+- Likely reasons the dev gain vanished: alpha came from a nearly flat, noisy curve on only 1,109 rows; the audio features are frozen and mean-pooled; and MELD audio has laugh tracks and music.
+Decision: report the numbers as they are and keep alpha = 0.45 in the live system. Nothing is retuned after seeing test.
+Tradeoff: the live system's fused label is no more accurate than text alone on this data. What audio still adds is the tone/text conflict signal, which the reply uses.

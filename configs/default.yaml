@@ -36,3 +36,11 @@ audio_head:
   class_weighting: sqrt_inv          # same scheme as the text model
   checkpoint: checkpoints/audio/best.pt
   run_dir: runs/audio
+
+fusion:
+  alpha_step: 0.05                   # grid for the weight on text, tuned on dev
+  conflict_min_conf: 0.4             # both models must be at least this sure for a tone/text conflict
+  run_dir: runs/fusion
+
+eval:
+  run_dir: runs/final_eval
