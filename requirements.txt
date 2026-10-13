@@ -1,0 +1,11 @@
+# Install PyTorch first, from the CUDA 12.6 index:
+#   pip install torch==2.14.1 --index-url https://download.pytorch.org/whl/cu126
+# then: pip install -r requirements.txt && pip install -e .
+transformers==5.19.0
+accelerate==1.15.0
+pandas==3.0.6
+numpy==2.4.6
+PyYAML==6.0.3
+soundfile==0.14.0
+scikit-learn==1.9.1
+pytest==9.1.1

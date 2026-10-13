@@ -4,12 +4,14 @@ __pycache__/
 *.pyc
 .pytest_cache/
 .env
+*.egg-info/
 
 # data, caches, and model outputs never go in git
-data/
-cache/
-checkpoints/
-runs/
+# (leading slash: only the top-level folders, not src/meldrt/data/)
+/data/
+/cache/
+/checkpoints/
+/runs/
 *.wav
 *.mp4
 *.npy

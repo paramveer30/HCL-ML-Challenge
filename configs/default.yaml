@@ -1,0 +1,17 @@
+# All tunable values live here. Paths point outside the repo; change them for your machine.
+
+data:
+  meld_root: D:/data/MELD/MELD.Raw   # the extracted raw release (CSVs + mp4 folders)
+  wav_root: D:/data/MELD/wav         # extract_audio.py writes wav_root/<split>/dia{D}_utt{U}.wav
+  splits:
+    train: {csv: train_sent_emo.csv, clips: train_splits}
+    dev: {csv: dev_sent_emo.csv, clips: dev_splits_complete}
+    test: {csv: test_sent_emo.csv, clips: output_repeated_splits_test}
+  feature_root: D:/data/MELD/wavlm   # cache_audio.py writes feature_root/<split>/dia{D}_utt{U}.npy
+  context_k: 2                       # previous utterances from the same dialogue
+
+audio:
+  sample_rate: 16000
+  max_seconds: 15                    # same cap as a live turn
+  min_seconds: 0.3                   # shorter clips are skipped when caching features (see DECISIONS.md)
+  wavlm_model: microsoft/wavlm-base-plus
