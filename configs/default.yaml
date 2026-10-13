@@ -44,3 +44,9 @@ fusion:
 
 eval:
   run_dir: runs/final_eval
+
+pipeline:
+  frame_samples: 512                 # 32 ms at 16 kHz, the frame size Silero VAD expects
+  start_ms: 250                      # this much speech in a row starts a turn
+  end_silence_ms: 600                # this much silence in a row ends it
+  max_turn_s: 15                     # a turn is force-ended here

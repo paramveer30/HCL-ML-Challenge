@@ -158,3 +158,15 @@ What it says:
 - Likely reasons the dev gain vanished: alpha came from a nearly flat, noisy curve on only 1,109 rows; the audio features are frozen and mean-pooled; and MELD audio has laugh tracks and music.
 Decision: report the numbers as they are and keep alpha = 0.45 in the live system. Nothing is retuned after seeing test.
 Tradeoff: the live system's fused label is no more accurate than text alone on this data. What audio still adds is the tone/text conflict signal, which the reply uses.
+
+## 2026-10-12: Endpointing rules
+Context: the live pipeline gets one speech / no-speech flag per 32 ms frame and has to decide where a turn starts and ends.
+Decision: a turn starts after 250 ms of speech in a row and ends after 600 ms of silence in a row or at 15 s. In frames: 8 to start (256 ms), 19 to end (608 ms), 468 at most (14.976 s). The start and end counts are rounded up so we never fire early; the cap is rounded down so a turn never exceeds 15 s. All three are config values.
+Tradeoff: 600 ms of waiting is added to every reply. Shorter would cut people off at pauses.
+
+## 2026-10-12: Dependencies for the live pipeline
+Context: the live path needs voice activity detection, speech recognition, a local reply model, and audio devices.
+Decision and why: `silero-vad` 6.2.3 (speech / no-speech per 512-sample frame; 462,594 parameters counted from the loaded model; 2.2 ms per frame on the CPU), `faster-whisper` 1.2.1 (Whisper small.en through CTranslate2, int8 on the GPU), `sounddevice` 0.5.6 (microphone and speakers), and Ollama serving `qwen2.5:1.5b` on 127.0.0.1 (the reply model).
+Measured: faster-whisper loads on CUDA on this machine without extra setup. On four dev clips of 1.3 to 4.9 s it took 285 to 711 ms per clip (the first call is the slowest) and the transcripts matched the gold text apart from punctuation and "talkin'" vs "talking".
+Tradeoff: faster-whisper and silero-vad bring `ctranslate2` and `onnxruntime` along.
+

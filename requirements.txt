@@ -9,3 +9,6 @@ PyYAML==6.0.3
 soundfile==0.14.0
 scikit-learn==1.9.1
 pytest==9.1.1
+faster-whisper==1.2.1
+silero-vad==6.2.3
+sounddevice==0.5.6
