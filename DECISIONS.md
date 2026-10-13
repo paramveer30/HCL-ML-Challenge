@@ -170,3 +170,18 @@ Decision and why: `silero-vad` 6.2.3 (speech / no-speech per 512-sample frame; 4
 Measured: faster-whisper loads on CUDA on this machine without extra setup. On four dev clips of 1.3 to 4.9 s it took 285 to 711 ms per clip (the first call is the slowest) and the transcripts matched the gold text apart from punctuation and "talkin'" vs "talking".
 Tradeoff: faster-whisper and silero-vad bring `ctranslate2` and `onnxruntime` along.
 
+## 2026-10-12: Live turn loop
+Context: frames of 512 samples (32 ms) arrive one at a time; each finished turn has to become one state.
+Decisions:
+- The pipeline checks the sample rate once and the size of every frame, and raises on a mismatch.
+- While waiting for a turn we keep the last 448 ms of frames (the 7 speech frames before the one that triggers the start, plus 200 ms of pre-roll), so the first word is not cut. The silence that ended the turn is dropped before the models see the audio.
+- Speech recognition and the audio model are started together in two threads; the text model runs once the transcript exists.
+- Whisper decodes greedily (`beam_size: 1`) to keep the delay down.
+- A turn with an empty transcript produces no state.
+- The live speaker is called "Speaker" in the text model's input, and the context is that speaker's last 2 turns. In training the context held real names and other speakers. This is a known mismatch.
+- A turn under 0.3 s gets no audio view: the fused answer is text alone and the conflict flag is false.
+- Silero's internal memory is reset after every turn.
+Measured on six dev clips pushed through the real pipeline with `HF_HUB_OFFLINE=1`: all models load in 4.4 s; after the first turn (1,003 ms, warm-up) the state is ready 328 to 462 ms after the turn ends, of which speech recognition is 285 to 445 ms, the audio branch up to 254 ms running at the same time, and the text model 12 to 17 ms. PyTorch holds 838 MiB of GPU memory with RoBERTa, WavLM, and the head loaded.
+Seen in those clips: a quiet "Oh my God," at the start of one clip was missed because Silero scored it as non-speech, and two clips with long pauses were split into two turns each.
+Tradeoff: pauses over 600 ms split one sentence into two turns, and very quiet speech at the start of a turn can be lost.
+

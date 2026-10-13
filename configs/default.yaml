@@ -50,3 +50,12 @@ pipeline:
   start_ms: 250                      # this much speech in a row starts a turn
   end_silence_ms: 600                # this much silence in a row ends it
   max_turn_s: 15                     # a turn is force-ended here
+  preroll_ms: 200                    # audio kept from before the turn was detected, so the first word is whole
+  vad_threshold: 0.5                 # Silero speech probability at or above this counts as speech
+  history_turns: 3                   # past turns kept for context and for the reply prompt
+  speaker_name: Speaker              # name used for the live speaker in the text model's input
+
+asr:
+  model: small.en                    # Whisper small, English
+  compute_type: int8
+  beam_size: 1

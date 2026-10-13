@@ -3,7 +3,7 @@ from types import SimpleNamespace
 import numpy as np
 import torch
 
-from meldrt.train.cache_audio import clip_features
+from meldrt.models.audio import clip_features
 
 
 def fake_extractor(wav, sampling_rate, return_tensors):
