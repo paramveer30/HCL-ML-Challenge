@@ -3,21 +3,16 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
+import onnxruntime
 import torch
-from transformers import (
-    AutoFeatureExtractor,
-    AutoModelForSequenceClassification,
-    AutoTokenizer,
-    ViTForImageClassification,
-    WavLMModel,
-)
+from transformers import AutoFeatureExtractor, AutoModelForSequenceClassification, AutoTokenizer, ViTModel, WavLMModel
 
 from meldrt.data.video import FaceFinder, crop_face
 from meldrt.models.audio import clip_features
 from meldrt.models.fusion import softmax
 from meldrt.models.head import LayerMixHead
 from meldrt.models.text import predict_logits
-from meldrt.models.vision import face_outputs, mean_over_faces
+from meldrt.models.vision import expression_probs, face_layers, mean_over_faces
 
 
 def keep_end(tokenizer, target, room):
@@ -38,8 +33,8 @@ class Face:
 
     box: tuple                 # (x, y, w, h) of the face, in pixels of that picture
     points: list               # the detector's 5 landmarks as (x, y): eyes, nose tip, mouth corners
-    layers: np.ndarray         # ViT features of the face, shape (13, 768)
-    expression: np.ndarray     # the ViT's own expression classifier, probabilities over the 7 labels
+    layers: np.ndarray | None  # ViT features of the face, shape (13, 768), for the head trained on MELD
+    expression: np.ndarray | None   # what the face shows: the expression classifier's probabilities over the 7 labels
 
 
 class EmotionClassifier:
@@ -66,7 +61,11 @@ class EmotionClassifier:
             self.finder = FaceFinder(v["detector_file"], v["min_face_score"], v["min_face_px"], v["detect_width"])
             self.face_margin, self.image_size = v["face_margin"], v["image_size"]
             self.live_head = v["live_head"]
-            self.vit = ViTForImageClassification.from_pretrained(v["model"]).to(device).eval()
+            self.expression_margin = v["expression_margin"]
+            # the checkpoint also holds a classifier trained on FER2013; only the encoder under it is used
+            self.vit = ViTModel.from_pretrained(v["model"], add_pooling_layer=False).to(device).eval()
+            # small enough for the CPU (about 12 ms a face), so it takes no GPU memory from the other models
+            self.expression = onnxruntime.InferenceSession(v["expression_file"], providers=["CPUExecutionProvider"])
             self.vision_head = LayerMixHead(hidden=h["hidden"], dropout=h["dropout"]).to(device).eval()
             self.vision_head.load_state_dict(torch.load(h["checkpoint"], map_location=device))
 
@@ -89,22 +88,28 @@ class EmotionClassifier:
             logits = self.head(torch.from_numpy(feats).unsqueeze(0).to(self.device))
         return softmax(logits[0].cpu().numpy())
 
-    def look(self, frame):
-        """frame: one BGR image from a camera or a video. Returns a Face for the largest face in it, or None."""
+    def look(self, frame, from_camera):
+        """frame: one BGR image. from_camera: True for a live camera, False for a picture of a clip's video.
+        Returns a Face for the largest face in it, or None.
+
+        Each face model is used where it was trained. A camera shows one person facing it, like the photos
+        the expression classifier learned from. A MELD clip is a TV shot, which is what our own head saw.
+        """
         found = self.finder.largest_face(frame)
         if found is None:
             return None
         box, points = found
-        crop = crop_face(frame, box, self.face_margin, self.image_size)
-        layers, expression = face_outputs(crop[None], self.vit, self.device)
-        return Face(box=box, points=points, layers=layers[0], expression=expression[0])
+        layers = expression = None
+        if from_camera:
+            crop = crop_face(frame, box, self.expression_margin, self.image_size)
+            expression = expression_probs(crop[None], self.expression)[0]
+        if not from_camera or self.live_head == "meld":
+            crop = crop_face(frame, box, self.face_margin, self.image_size)
+            layers = face_layers(crop[None], self.vit, self.device)[0]
+        return Face(box=box, points=points, layers=layers, expression=expression)
 
     def vision_probs(self, faces, from_camera):
-        """faces: the Face objects seen during one turn. Probabilities from the face, shape (7,).
-
-        Each head is used where it was trained: a camera shows one person facing it, like the photos the
-        ViT's own expression classifier learned from; a MELD clip is a TV shot, which is what our head saw.
-        """
+        """faces: the Face objects seen during one turn. Probabilities from the face, shape (7,)."""
         if from_camera and self.live_head == "expression":
             return np.mean([face.expression for face in faces], axis=0)
         # the same path as training: average over the faces, float16 features, read back as float32

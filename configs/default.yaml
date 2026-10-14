@@ -47,8 +47,11 @@ vision:
   min_face_px: 40                    # smaller faces are ignored: too few pixels to read an expression
   face_margin: 0.25                  # extra room around the face box, as a share of its size
   image_size: 224
-  live_head: expression              # face view for a live camera: expression (the ViT's own classifier) or meld (our head).
+  live_head: expression              # face view for a live camera: expression (the classifier below) or meld (our head).
                                      # pictures from a MELD clip's video always use our head
+  expression_file: cache/enet_b0_8_best_vgaf.onnx    # HSEmotion EfficientNet-B0 trained on AffectNet, fetched by fetch_models.py
+  expression_url: https://github.com/HSE-asavchenko/face-emotion-recognition/raw/main/models/affectnet_emotions/onnx/enet_b0_8_best_vgaf.onnx
+  expression_margin: 0.1             # room around the face box for the expression classifier (see DECISIONS.md)
   feature_root: D:/data/MELD/vit_face   # cache_vision.py writes feature_root/<split>/dia{D}_utt{U}.npy
 
 vision_head:

@@ -62,11 +62,12 @@ Parameters on the local inference path (`scripts/count_params.py`; counted from 
 | Kokoro voice embedding | speech output | 130,560 |
 | spaCy `en_core_web_sm` | Kokoro's text front end | 1,570,514 |
 | YuNet face detector | finds faces in a picture | 53,121 |
-| ViT-base face expression model | face features and facial expression, frozen | 85,804,039 |
+| ViT-base face encoder | face features for our vision head, frozen | 85,798,656 |
+| EfficientNet-B0 expression classifier (HSEmotion) | what a live camera face shows, frozen | 3,996,789 |
 | Vision head | face emotion, trained by us | 198,676 |
-| **Total** | | **2,174,737,249** |
+| **Total** | | **2,178,728,655** |
 
-The cap is 6,000,000,000, so the system uses 36.2% of it. Quantization changes how each number is stored, not how many there are, so the reply model counts at full size.
+The cap is 6,000,000,000, so the system uses 36.3% of it. Quantization changes how each number is stored, not how many there are, so the reply model counts at full size.
 
 ## 4. Data
 
@@ -171,7 +172,16 @@ After calibration, turns shown at 0.7 to 0.8 were right 76% of the time, at 0.8 
 
 ### Face view for a live camera
 
-For pictures from a MELD clip the vision model is the head trained on MELD (the table above). For a live camera the face view comes from the ViT's own expression classifier instead, which was trained on photos of single faces looking at the camera. On MELD dev that classifier scores 0.26 weighted F1 against 0.35 for our head, so by our own numbers it is the worse model on MELD. We use it live because a webcam picture looks like its training data and not like a TV shot, and because the MELD head read a smile at the webcam as surprise. We have no labelled webcam data, so this choice is not measured. It cannot move any reported score: the vision weight in the fusion is 0.
+For pictures from a MELD clip the vision model is the head trained on MELD (the table above). A live camera is a different kind of picture: one person, facing it. There the face view comes from a facial expression classifier that was trained on in-the-wild colour photos (HSEmotion, EfficientNet-B0 on AffectNet, 4 million parameters, about 12 ms a face on the CPU).
+
+We first used the classifier that ships with our ViT (trained on FER2013: small grey face crops). In front of a webcam it called a neutral face and a sad face joy. Measured on 259 dev clips with their MELD labels (a rough yardstick, since MELD labels the utterance and not the face, but the same one for both models):
+
+| Expression classifier, no MELD training | Accuracy | Weighted F1 | Macro F1 | Says joy on true-neutral clips | Clips it calls joy (34 are) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| ViT trained on FER2013 | 0.286 | 0.272 | 0.171 | 27% | 82 |
+| EfficientNet-B0 trained on AffectNet (used) | 0.266 | 0.275 | 0.239 | 14% | 42 |
+
+The second one is no more accurate overall on these clips, but it halves the joy mistakes and uses all seven labels (the first never said surprise). Tighter crops or grey input did not help the first model (eight variants, accuracy 0.22 to 0.29). Neither classifier beats our MELD-trained head on MELD (0.35 weighted F1), which is why clips keep that head. We have no labelled webcam data, so how good the live face view is on a real webcam is not measured. It cannot move any reported score: the vision weight in the fusion is 0.
 
 > TODO (Param): 1 paragraph in your own words on why vision is weak on MELD (several faces, the largest is not always the speaker, the label is for the utterance and not the facial expression, TV lighting and cuts) and what it is still used for live (a third view in the state, the check-in when face and words disagree).
 
@@ -281,6 +291,7 @@ Left out on purpose: active-speaker detection for the vision branch; reinforceme
 | Qwen2.5-1.5B-Instruct through Ollama | reply generation | Apache 2.0 |
 | Kokoro-82M | speech output | Apache 2.0 |
 | `trpakov/vit-face-expression` (ViT-base trained on FER2013) | face features | Apache 2.0 |
+| HSEmotion `enet_b0_8_best_vgaf` (EfficientNet-B0 trained on AffectNet) through ONNX Runtime | facial expression for a live camera | Apache 2.0 |
 | YuNet face detector (OpenCV Zoo) through OpenCV | finding faces | MIT (model), Apache 2.0 (OpenCV) |
 | PyTorch, Hugging Face transformers, scikit-learn, pandas, NumPy | training and evaluation | BSD / Apache 2.0 |
 

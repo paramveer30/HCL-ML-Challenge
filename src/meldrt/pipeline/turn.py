@@ -89,7 +89,7 @@ class Pipeline:
         is remembered with the time it arrived, so the turn being spoken can use it. Returns the Face, or None."""
         if self.weights3 is None:
             return None
-        face = self.classifier.look(frame)
+        face = self.classifier.look(frame, from_camera)
         if face is not None:
             self.faces.append((time.perf_counter(), face, from_camera))
         return face

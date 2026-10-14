@@ -26,14 +26,14 @@ def main():
     AutoModelForSequenceClassification.from_pretrained(cfg["text"]["model"])
     print("RoBERTa:", cfg["text"]["model"])
 
-    # the vision extension: a ViT trained for facial expressions, and a small face detector for OpenCV
+    # the vision extension: a ViT for face features, a small face detector, and an expression classifier
     vision = cfg["vision"]
     ViTModel.from_pretrained(vision["model"], add_pooling_layer=False)
-    detector = Path(vision["detector_file"])
-    if not detector.exists():
-        detector.parent.mkdir(parents=True, exist_ok=True)
-        urllib.request.urlretrieve(vision["detector_url"], detector)
-    print("Face models:", vision["model"], "and", detector)
+    for file, url in [(vision["detector_file"], vision["detector_url"]), (vision["expression_file"], vision["expression_url"])]:
+        if not Path(file).exists():
+            Path(file).parent.mkdir(parents=True, exist_ok=True)
+            urllib.request.urlretrieve(url, file)
+    print("Face models:", vision["model"], vision["detector_file"], vision["expression_file"])
 
     # building the voice fetches Kokoro and spaCy's small English model; saying one word fetches the voice
     voice = cfg["voice"]

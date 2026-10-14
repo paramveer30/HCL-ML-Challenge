@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 from meldrt.data.video import crop_face, face_crops, sample_indexes, square_box
 
@@ -54,3 +55,43 @@ def test_no_faces_gives_an_empty_array_of_the_right_shape():
 
     crops = face_crops([np.zeros((360, 640, 3), dtype=np.uint8)], Blind(), 0.25, 224)
     assert crops.shape == (0, 224, 224, 3) and crops.dtype == np.uint8
+
+
+# --- the expression classifier ---
+
+class FakeSession:
+    """Stands in for the ONNX model: the same 8 scores for every face, highest for the class it is told to favour."""
+
+    def __init__(self, favourite):
+        self.favourite = favourite
+        self.seen = None
+
+    def get_inputs(self):
+        from types import SimpleNamespace
+        return [SimpleNamespace(name="input")]
+
+    def run(self, outputs, feed):
+        self.seen = feed["input"]
+        scores = np.zeros((len(self.seen), 8), dtype=np.float32)
+        scores[:, self.favourite] = 3.0
+        return [scores]
+
+
+def test_expression_probs_are_in_meld_order_and_contempt_is_dropped():
+    from meldrt.labels import LABELS
+    from meldrt.models.vision import EXPRESSION_CLASSES, expression_probs
+
+    crops = np.zeros((2, 224, 224, 3), dtype=np.uint8)
+    for theirs in ["joy", "sadness", "neutral", "surprise"]:
+        session = FakeSession(EXPRESSION_CLASSES.index(theirs))
+        probs = expression_probs(crops, session)
+        assert probs.shape == (2, 7) and probs.sum(axis=1) == pytest.approx([1.0, 1.0])
+        assert LABELS[int(probs[0].argmax())] == theirs
+    assert session.seen.shape == (2, 3, 224, 224) and session.seen.dtype == np.float32
+
+
+def test_a_face_the_model_calls_contempt_spreads_over_the_seven_labels():
+    from meldrt.models.vision import EXPRESSION_CLASSES, expression_probs
+
+    probs = expression_probs(np.zeros((1, 224, 224, 3), dtype=np.uint8), FakeSession(EXPRESSION_CLASSES.index("contempt")))
+    assert probs[0] == pytest.approx(np.full(7, 1 / 7))

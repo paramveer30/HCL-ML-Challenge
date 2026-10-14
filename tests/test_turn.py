@@ -68,7 +68,7 @@ class FakeClassifier:
         self.audio_lengths.append(len(wav))
         return self.p_audio
 
-    def look(self, frame):
+    def look(self, frame, from_camera):
         # a frame that is all zeros has no face in it
         return "a face" if frame.any() else None
 

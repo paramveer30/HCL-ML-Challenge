@@ -50,7 +50,8 @@ def main():
     if cfg["pipeline"]["use_vision"]:
         rows += [
             ("YuNet face detector", count_onnx(cfg["vision"]["detector_file"]), "ONNX file"),
-            ("ViT face expression encoder", count_torch(classifier.vit), "loaded model"),
+            ("ViT face encoder", count_torch(classifier.vit), "loaded model"),
+            ("Expression classifier (EfficientNet-B0)", count_onnx(cfg["vision"]["expression_file"]), "ONNX file"),
             ("Vision head", count_torch(classifier.vision_head), "loaded model"),
         ]
     total = sum(count for _, count, _ in rows)
