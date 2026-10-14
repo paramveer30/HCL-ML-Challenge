@@ -1,5 +1,6 @@
-/* Terminal look: black page, white monospace text, thin white boxes, lots of room.
-   Title on top, the talk button in the middle, two boxes under it.
+/* Terminal look: black page, white monospace text, thin white boxes.
+   Title on top, the talk button under it, then three boxes side by side that fill the rest of
+   the screen: conversation, under the hood, camera. A box scrolls inside itself when it is full.
    Every color, size and font is a variable here, so the palette can be replaced in one edit. */
 :root {
   color-scheme: dark;
@@ -15,67 +16,73 @@
   --alert: #ffffff;          /* the disagree note */
   --radius: 0;
   --font: ui-monospace, "Cascadia Mono", "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
-  --size: 16px;
-  --width: 1480px;
-  --pad: 56px;               /* page side padding */
-  --box-pad: 40px;           /* room inside a box */
+  --size: 15px;
+  --width: 2000px;
+  --pad: 44px;               /* page side padding */
+  --box-pad: 28px;           /* room inside a box */
+  --gap: 36px;               /* room between the boxes */
 }
 
 * { box-sizing: border-box; }
-body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font); font-size: var(--size); line-height: 2; letter-spacing: 0.03em; word-spacing: 0.18em; }
+html, body { height: 100%; }
+body { margin: 0; background: var(--bg); color: var(--text); font-family: var(--font); font-size: var(--size); line-height: 1.9; letter-spacing: 0.03em; word-spacing: 0.16em;
+       display: flex; flex-direction: column; }
 h1, h2, h3, p, ol { margin: 0; padding: 0; font-size: inherit; font-weight: 400; }
 button, select, input { font: inherit; color: inherit; letter-spacing: inherit; word-spacing: inherit; }
 :focus-visible { outline: 1px solid var(--text); outline-offset: 6px; }
 .dim { color: var(--dim); }
 .small { font-size: 0.85em; }
 
-.head, main, .foot { max-width: var(--width); margin: 0 auto; padding-left: var(--pad); padding-right: var(--pad); }
+.head, main, .foot { width: 100%; max-width: var(--width); margin: 0 auto; padding-left: var(--pad); padding-right: var(--pad); }
 
 /* title and by-line, centered at the top */
-.head { text-align: center; padding-top: 72px; }
-.head h1 { font-size: 2.1em; line-height: 1.5; letter-spacing: 0.06em; }
-.head h1 span { display: block; }
-.head .by { margin-top: 28px; font-size: 1.15em; }
+.head { text-align: center; padding-top: 22px; }
+.head h1 { font-size: 1.7em; line-height: 1.35; letter-spacing: 0.06em; }
+.head h1 span + span::before { content: "\00b7"; margin: 0 1.2ch; }
+.head .by { margin-top: 6px; }
+.head .by #email { margin-left: 2.5ch; }
 
-/* the middle of the page: status, the talk button, the smaller controls */
-.talk-area { display: flex; flex-direction: column; align-items: center; gap: 22px; padding: 88px 0 96px; text-align: center; }
+/* status, the talk button, the smaller controls */
+main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.talk-area { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px 0 26px; text-align: center; }
 .cursor { display: none; }
 .status:not([data-state="idle"]) .cursor { display: inline; animation: blink 1s steps(1) infinite; }
 button { background: none; border: 0; border-radius: var(--radius); padding: 6px 4px; cursor: pointer; }
 button:hover { text-decoration: underline; text-underline-offset: 7px; }
 button:disabled { color: var(--faint); cursor: default; text-decoration: none; }
-.talk { border: 1px solid var(--line); padding: 26px 72px; font-size: 1.35em; letter-spacing: 0.1em; margin-top: 6px; }
+.talk { border: 1px solid var(--line); padding: 16px 64px; font-size: 1.3em; letter-spacing: 0.1em; }
 .talk:hover, .talk[aria-pressed="true"] { background: var(--text); color: var(--bg); text-decoration: none; }
-.more-controls { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 18px 40px; margin-top: 36px; }
-select { background: var(--bg); border: 1px solid var(--dim); border-radius: var(--radius); padding: 8px 14px; max-width: 100%; }
+.more-controls { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 12px 36px; margin-top: 14px; }
+select { background: var(--bg); border: 1px solid var(--dim); border-radius: var(--radius); padding: 6px 12px; max-width: 100%; }
 .check { display: inline-flex; gap: 14px; align-items: center; cursor: pointer; }
 .check input { appearance: none; margin: 0; width: 15px; height: 15px; border: 1px solid var(--text); border-radius: var(--radius); }
 .check input:checked { background: var(--text); }
 
-/* two boxes side by side, each with its name sitting on the top border */
-.boxes { display: grid; grid-template-columns: minmax(0, 9fr) minmax(0, 11fr); gap: 56px; align-items: start; }
-.box { border: 1px solid var(--line); padding: var(--box-pad); padding-top: 0; display: flex; flex-direction: column; gap: 22px; min-width: 0; min-height: 420px; }
-.box > h2 { align-self: flex-start; background: var(--bg); padding: 0 16px; margin: -1em 0 14px -16px; letter-spacing: 0.08em; }
-.box h3 { color: var(--dim); margin-top: 26px; }
+/* three boxes side by side, as tall as the room that is left; each has its name sitting on the top border */
+.boxes { flex: 1; min-height: 340px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 0.85fr); gap: var(--gap); }
+.box { border: 1px solid var(--line); display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.box > h2 { align-self: flex-start; background: var(--bg); padding: 0 14px; margin: -1em 0 0 calc(var(--box-pad) - 14px); letter-spacing: 0.08em; }
+.box-body { flex: 1; min-height: 0; overflow-y: auto; padding: 12px var(--box-pad) 18px; display: flex; flex-direction: column; gap: 8px; }
+.box h3 { color: var(--dim); margin-top: 8px; }
 
 /* conversation: one entry per turn, like a shell session */
-#log { list-style: none; display: flex; flex-direction: column; gap: 30px; max-height: 640px; overflow-y: auto; }
-.line { display: grid; grid-template-columns: 9ch minmax(0, 1fr); column-gap: 3ch; }
+#log { list-style: none; display: flex; flex-direction: column; gap: 22px; }
+.line { display: grid; grid-template-columns: 8ch minmax(0, 1fr); column-gap: 2ch; }
 .line .who { color: var(--dim); }
 .line .words { overflow-wrap: anywhere; }
-.line .meta { grid-column: 2; color: var(--dim); margin-top: 4px; }
+.line .meta { grid-column: 2; color: var(--dim); }
 .line .meta .alert { color: var(--alert); display: block; }
 .line.note .words { color: var(--dim); }
 .line.robot.streaming .words::after { content: "_"; animation: blink 1s steps(1) infinite; }
 
 /* under the hood */
-.emotion { font-size: 1.9em; line-height: 1.4; overflow-wrap: anywhere; }
-.scroll { overflow-x: auto; }
-table { border-collapse: collapse; width: 100%; letter-spacing: 0; word-spacing: 0.1em; }
-th, td { font-weight: 400; text-align: left; padding: 7px 1.5ch 7px 0; white-space: nowrap; color: var(--dim); }
+.emotion { font-size: 1.6em; line-height: 1.3; overflow-wrap: anywhere; }
+.scroll { overflow-x: auto; flex-shrink: 0; }
+table { border-collapse: collapse; width: 100%; letter-spacing: 0; word-spacing: 0.1em; line-height: 1.5; }
+th, td { font-weight: 400; text-align: left; padding: 2px 1.5ch 2px 0; white-space: nowrap; color: var(--dim); }
 th:last-child, td:last-child { padding-right: 0; }
-thead th { padding-bottom: 14px; border-bottom: 1px solid var(--faint); }
-tbody tr:first-child th, tbody tr:first-child td { padding-top: 16px; }
+thead th { padding-bottom: 6px; border-bottom: 1px solid var(--faint); }
+tbody tr:first-child th, tbody tr:first-child td { padding-top: 7px; }
 .matrix td .off { color: var(--faint); }
 .matrix td.is-top { color: var(--text); }
 .matrix td.is-top::after { content: " *"; }
@@ -83,31 +90,40 @@ tbody tr:first-child th, tbody tr:first-child td { padding-top: 16px; }
 .matrix td:nth-child(3).is-top .on { color: var(--model-audio); }
 .matrix td:nth-child(4).is-top .on { color: var(--model-vision); }
 .matrix td:nth-child(5).is-top .on { color: var(--model-fused); }
-.timing th, .timing td { text-align: right; padding-left: 4ch; padding-right: 0; }
+.timing th, .timing td { text-align: right; padding-left: 3ch; padding-right: 0; }
 .timing th:first-child, .timing td:first-child, .timing td.dim { text-align: left; padding-left: 0; }
 .timing td { color: var(--text); }
-#camera-body video { width: 100%; max-width: 480px; border: 1px solid var(--faint); display: block; }
 
-.foot { text-align: center; padding-top: 72px; padding-bottom: 72px; }
+/* camera */
+#camera-body video { width: 100%; border: 1px solid var(--faint); display: block; }
+
+.foot { text-align: center; padding-top: 14px; padding-bottom: 16px; }
 
 @keyframes blink { 50% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .cursor, .line.robot.streaming .words::after { animation: none; } }
 
-/* laptop screens: the same layout with a little less padding, so the table still fits its box */
-@media (max-width: 1420px) {
-  :root { --pad: 32px; --box-pad: 28px; }
-  .boxes { gap: 36px; }
+/* laptop screens: smaller text and tighter boxes, so the table still fits the middle box */
+@media (max-width: 1700px) {
+  :root { --size: 13px; --pad: 28px; --box-pad: 20px; --gap: 24px; }
+  .boxes { grid-template-columns: minmax(0, 0.95fr) minmax(0, 1.5fr) minmax(0, 0.8fr); }
   th, td { padding-right: 1ch; }
 }
 
-/* narrow screens: one box under the other, a little less padding */
+/* short screens: a smaller title block, so the three boxes keep most of the height */
+@media (max-height: 880px) {
+  .head { padding-top: 12px; }
+  .head h1 { font-size: 1.4em; }
+  .talk-area { padding: 10px 0 18px; gap: 4px; }
+  .talk { padding: 10px 56px; }
+}
+
+/* narrow screens: the page scrolls and the boxes sit one under the other */
 @media (max-width: 1100px) {
-  :root { --pad: 20px; --box-pad: 22px; --size: 14px; }
-  .head { padding-top: 44px; }
-  .head h1 { font-size: 1.6em; }
-  .talk-area { padding: 56px 0 64px; }
-  .talk { padding: 22px 36px; }
-  .boxes { grid-template-columns: minmax(0, 1fr); gap: 48px; }
-  .box { min-height: 0; }
-  #log { max-height: none; }
+  :root { --pad: 20px; --box-pad: 20px; --size: 14px; }
+  html, body { height: auto; }
+  .boxes { grid-template-columns: minmax(0, 1fr); gap: 44px; }
+  .box-body { overflow-y: visible; }
+  .head .by #email { display: block; margin-left: 0; }
+  .head h1 span { display: block; }
+  .head h1 span + span::before { content: none; }
 }

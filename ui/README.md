@@ -88,7 +88,7 @@ The title, the by-line, and the email at the top of the page are `TITLE`, `ORG`,
 
 ## Changing the look
 
-Black background and white monospace text with wide spacing. The title is at the top, the talk button is in the middle, and under it are two outlined boxes: the conversation on the left and "under the hood" on the right. On a narrow screen the boxes sit one under the other. Every color, size, and font is a variable in the `:root` block at the top of `ui/static/style.css`, including one bar color per model. Only fonts already on the computer are used.
+Black background and white monospace text with wide spacing. The title is at the top, the talk button is under it, and the rest of the screen is three outlined boxes side by side: the conversation, "under the hood", and the camera. The page itself does not scroll on a desktop screen; a box scrolls inside itself when it is full. On a narrow screen the boxes sit one under the other. Every color, size, and font is a variable in the `:root` block at the top of `ui/static/style.css`, including one bar color per model. Only fonts already on the computer are used.
 
 ## Files
 

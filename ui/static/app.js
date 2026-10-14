@@ -8,6 +8,7 @@ const BAR_CELLS = 5;
 
 const $ = (id) => document.getElementById(id);
 const log = $("log");
+const logBody = $("log-body");     // the part of the conversation box that scrolls
 $("author").textContent = CONFIG.AUTHOR;
 $("email").textContent = CONFIG.EMAIL;
 $("title").textContent = CONFIG.TITLE;
@@ -72,7 +73,7 @@ function addLine(kind, who, text) {
   words.textContent = text;
   item.append(label, words);
   log.appendChild(item);
-  log.scrollTop = log.scrollHeight;
+  logBody.scrollTop = logBody.scrollHeight;
   return item;
 }
 
@@ -112,12 +113,12 @@ function showReplyPiece(event) {
   const turn = turnOf(event.turn_id);
   if (!turn.robot) { turn.robot = addLine("robot", "robot>", ""); turn.robot.classList.add("streaming"); }
   turn.robot.querySelector(".words").textContent += event.text;
-  log.scrollTop = log.scrollHeight;
+  logBody.scrollTop = logBody.scrollHeight;
 }
 
 function showTiming(event) {
   turnOf(event.turn_id).timing[event.stage] = event.ms;
-  const recent = [...turns.entries()].filter(([, turn]) => Object.keys(turn.timing).length).slice(-10).reverse();
+  const recent = [...turns.entries()].filter(([, turn]) => Object.keys(turn.timing).length).slice(-3).reverse();
   $("timing-rows").innerHTML = recent.map(([id, turn]) =>
     "<tr><td>" + id + "</td>" + TIMING_STAGES.map((stage) =>
       "<td>" + (turn.timing[stage] === undefined ? "n/a" : turn.timing[stage]) + "</td>").join("") + "</tr>").join("");

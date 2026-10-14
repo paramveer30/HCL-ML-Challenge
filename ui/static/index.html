@@ -10,8 +10,7 @@
 <body>
   <header class="head">
     <h1><span id="title"></span><span id="org"></span></h1>
-    <p class="by">By <span id="author"></span></p>
-    <p class="dim" id="email"></p>
+    <p class="by">By <span id="author"></span><span class="dim" id="email"></span></p>
   </header>
 
   <main>
@@ -30,39 +29,46 @@
       </div>
     </section>
 
-    <!-- two boxes: what was said, and the numbers behind it -->
+    <!-- three boxes side by side: what was said, the numbers behind it, and what the camera sees -->
     <div class="boxes">
       <section class="box" aria-labelledby="log-title">
         <h2 id="log-title">conversation</h2>
-        <ol id="log" aria-live="polite"></ol>
-        <p class="dim" id="log-empty">nothing yet. hold the button and say something.</p>
+        <div class="box-body" id="log-body">
+          <ol id="log" aria-live="polite"></ol>
+          <p class="dim" id="log-empty">nothing yet. hold the button and say something.</p>
+        </div>
       </section>
 
       <section class="box" aria-labelledby="hood-title">
         <h2 id="hood-title">under the hood</h2>
-        <p class="emotion" id="emotion">&gt; waiting for a voice</p>
-        <p class="dim" id="emotion-note">the emotion shows up here after a turn</p>
+        <div class="box-body">
+          <p class="emotion" id="emotion">&gt; waiting for a voice</p>
+          <p class="dim" id="emotion-note">the emotion shows up here after a turn</p>
 
-        <h3>probabilities</h3>
-        <div class="scroll">
-          <table class="matrix">
-            <thead><tr><th></th><th>words</th><th>voice</th><th>face</th><th>fused</th></tr></thead>
-            <tbody id="matrix-rows"></tbody>
-          </table>
+          <h3>probabilities</h3>
+          <div class="scroll">
+            <table class="matrix">
+              <thead><tr><th></th><th>words</th><th>voice</th><th>face</th><th>fused</th></tr></thead>
+              <tbody id="matrix-rows"></tbody>
+            </table>
+          </div>
+
+          <h3>timing in ms, last 3 turns. total: end of the turn to the first sound</h3>
+          <div class="scroll">
+            <table class="timing">
+              <thead><tr><th>turn</th><th>transcript</th><th>emotion</th><th>first word</th><th>total</th></tr></thead>
+              <tbody id="timing-rows"><tr><td colspan="5" class="dim">n/a</td></tr></tbody>
+            </table>
+          </div>
         </div>
+      </section>
 
-        <h3>timing in ms, last 10 turns</h3>
-        <div class="scroll">
-          <table class="timing">
-            <thead><tr><th>turn</th><th>transcript</th><th>emotion</th><th>first word</th><th>total</th></tr></thead>
-            <tbody id="timing-rows"><tr><td colspan="5" class="dim">n/a</td></tr></tbody>
-          </table>
+      <section class="box" aria-labelledby="camera-title">
+        <h2 id="camera-title">camera</h2>
+        <div class="box-body">
+          <div id="camera-body"><p class="dim">off</p></div>
+          <p class="dim small" id="faces-note">tick camera to let the face model see you while you talk. images stay on this computer.</p>
         </div>
-        <p class="dim small">total is from the end of the turn to the first spoken audio.</p>
-
-        <h3>camera</h3>
-        <div id="camera-body"><p class="dim">off</p></div>
-        <p class="dim small" id="faces-note">tick camera to let the face model see you while you talk. images stay on this computer.</p>
       </section>
     </div>
   </main>
