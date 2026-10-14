@@ -47,6 +47,8 @@ vision:
   min_face_px: 40                    # smaller faces are ignored: too few pixels to read an expression
   face_margin: 0.25                  # extra room around the face box, as a share of its size
   image_size: 224
+  live_head: expression              # face view for a live camera: expression (the ViT's own classifier) or meld (our head).
+                                     # pictures from a MELD clip's video always use our head
   feature_root: D:/data/MELD/vit_face   # cache_vision.py writes feature_root/<split>/dia{D}_utt{U}.npy
 
 vision_head:
@@ -63,6 +65,12 @@ fusion:
   alpha_step: 0.05                   # grid for the weight on text, tuned on dev
   conflict_min_conf: 0.5             # both models must be at least this sure for a tone/text conflict
   run_dir: runs/fusion
+
+samples:                             # the sample clips of the web page, built by scripts/make_samples.py from dev
+  dir: ui/clips
+  gap_seconds: 1.5                   # silence between the lines of a dialogue sample
+  lines: [dia4_utt10, dia13_utt8, dia15_utt4, dia11_utt12, dia16_utt10, dia94_utt2, dia40_utt8]
+  dialogues: [3, 96]                 # short dialogues played line by line, so later lines have context
 
 eval:
   run_dir: runs/final_eval
@@ -91,12 +99,25 @@ asr:
 
 reply:
   url: http://127.0.0.1:11434        # Ollama, local only
-  model: qwen2.5:1.5b
+  model: qwen2.5:1.5b                # the reply model (DECISIONS.md has the comparison with llama3.2:3b)
   max_tokens: 64
+  context_tokens: 2048               # room for the rules, the examples and three past turns; smaller saves GPU memory
   temperature: 0.6
   seed: 0
+  stop:                              # the reply ends where one of these would begin (see DECISIONS.md)
+    - "How can I"
+    - "Can I help"
+    - "What can I do"
+    - "Is there anything"
+    - "Need help"
+    - "Let me know"
+    - "I'm here to"
+    - "I'm here for"
+    - "Feel free"
+    - "If you need"
+    - "If you ever"
   keep_alive: 30m                    # keep the model loaded between turns
-  low_conf: 0.45                     # below this fused confidence the robot checks in instead of assuming
+  low_conf: 0.5                      # below this fused confidence the robot checks in instead of assuming
 
 voice:
   repo: hexgrad/Kokoro-82M

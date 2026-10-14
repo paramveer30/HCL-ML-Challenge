@@ -42,21 +42,32 @@ button, select, input { font: inherit; color: inherit; letter-spacing: inherit; 
 .head .by { margin-top: 6px; }
 .head .by #email { margin-left: 2.5ch; }
 
-/* status, the talk button, the smaller controls */
+/* one row of controls: sample clips on the left, the talk button in the middle, settings on the right */
 main { flex: 1; min-height: 0; display: flex; flex-direction: column; }
-.talk-area { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 16px 0 26px; text-align: center; }
+.controls { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; column-gap: 48px; padding: 18px 0 30px; }
+.group { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.group.middle { align-items: center; text-align: center; }
+.group.right { align-items: flex-end; text-align: right; }
+.group-title { color: var(--dim); }
+.row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; }
+.group.right .row { justify-content: flex-end; }
+/* the middle holds the control of the current mode only: the talk button, or the clip list and play */
+.mode-block { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.mode-block .row { justify-content: center; }
+.mode-block .talk { padding-left: 40px; padding-right: 40px; }
+[hidden] { display: none !important; }
 .cursor { display: none; }
 .status:not([data-state="idle"]) .cursor { display: inline; animation: blink 1s steps(1) infinite; }
-button { background: none; border: 0; border-radius: var(--radius); padding: 6px 4px; cursor: pointer; }
+button { background: none; border: 0; border-radius: var(--radius); padding: 4px; cursor: pointer; }
 button:hover { text-decoration: underline; text-underline-offset: 7px; }
 button:disabled { color: var(--faint); cursor: default; text-decoration: none; }
 .talk { border: 1px solid var(--line); padding: 16px 64px; font-size: 1.3em; letter-spacing: 0.1em; }
-.talk:hover, .talk[aria-pressed="true"] { background: var(--text); color: var(--bg); text-decoration: none; }
-.more-controls { display: flex; flex-wrap: wrap; justify-content: center; align-items: center; gap: 12px 36px; margin-top: 14px; }
+.talk:hover:not(:disabled), .talk[aria-pressed="true"] { background: var(--text); color: var(--bg); text-decoration: none; }
+.talk:disabled { border-color: var(--faint); }
+/* two buttons that work as one switch: the current choice is filled in */
+.choice { color: var(--dim); }
+.choice[aria-pressed="true"] { background: var(--text); color: var(--bg); text-decoration: none; }
 select { background: var(--bg); border: 1px solid var(--dim); border-radius: var(--radius); padding: 6px 12px; max-width: 100%; }
-.check { display: inline-flex; gap: 14px; align-items: center; cursor: pointer; }
-.check input { appearance: none; margin: 0; width: 15px; height: 15px; border: 1px solid var(--text); border-radius: var(--radius); }
-.check input:checked { background: var(--text); }
 
 /* three boxes side by side, as tall as the room that is left; each has its name sitting on the top border */
 .boxes { flex: 1; min-height: 340px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.35fr) minmax(0, 0.85fr); gap: var(--gap); }
@@ -94,8 +105,10 @@ tbody tr:first-child th, tbody tr:first-child td { padding-top: 7px; }
 .timing th:first-child, .timing td:first-child, .timing td.dim { text-align: left; padding-left: 0; }
 .timing td { color: var(--text); }
 
-/* camera */
+/* camera: the preview with the face tracker drawn over it */
 #camera-body video { width: 100%; border: 1px solid var(--faint); display: block; }
+.camera-frame { position: relative; }
+.camera-frame canvas { position: absolute; left: 0; top: 0; width: 100%; height: 100%; pointer-events: none; }
 
 .foot { text-align: center; padding-top: 14px; padding-bottom: 16px; }
 
@@ -113,7 +126,7 @@ tbody tr:first-child th, tbody tr:first-child td { padding-top: 7px; }
 @media (max-height: 880px) {
   .head { padding-top: 12px; }
   .head h1 { font-size: 1.4em; }
-  .talk-area { padding: 10px 0 18px; gap: 4px; }
+  .controls { padding: 10px 0 20px; }
   .talk { padding: 10px 56px; }
 }
 
@@ -126,4 +139,7 @@ tbody tr:first-child th, tbody tr:first-child td { padding-top: 7px; }
   .head .by #email { display: block; margin-left: 0; }
   .head h1 span { display: block; }
   .head h1 span + span::before { content: none; }
+  .controls { grid-template-columns: minmax(0, 1fr); row-gap: 28px; }
+  .group, .group.right { align-items: center; text-align: center; }
+  .row, .group.right .row { justify-content: center; }
 }

@@ -61,26 +61,32 @@ class FaceFinder:
         self.detect_width = detect_width
 
     def largest_face(self, frame):
-        """Returns (x, y, w, h) of the largest face in a BGR frame, or None if there is no face big enough."""
+        """Returns (box, points) for the largest face in a BGR frame, or None if there is no face big enough.
+
+        box: (x, y, w, h) in pixels. points: the detector's 5 landmarks as (x, y) pairs:
+        the two eyes, the tip of the nose, and the two corners of the mouth.
+        """
         # faces are looked for on a smaller copy of a wide frame (much faster on 1280 x 720);
-        # the box is scaled back, so the crop still comes from the full-size frame
+        # everything is scaled back, so the crop still comes from the full-size frame
         scale = min(1.0, self.detect_width / frame.shape[1])
         small = frame if scale == 1.0 else cv2.resize(frame, None, fx=scale, fy=scale, interpolation=cv2.INTER_AREA)
         self.detector.setInputSize((small.shape[1], small.shape[0]))
         _, faces = self.detector.detect(small)
         if faces is None:
             return None
-        x, y, w, h = (float(value) / scale for value in max(faces, key=lambda face: face[2] * face[3])[:4])
-        if min(w, h) < self.min_face_px:
+        # one row per face: x, y, w, h, then 5 landmarks as x, y pairs, then the score
+        face = [float(value) / scale for value in max(faces, key=lambda row: row[2] * row[3])[:14]]
+        box = tuple(face[:4])
+        if min(box[2], box[3]) < self.min_face_px:
             return None
-        return x, y, w, h
+        return box, [(face[i], face[i + 1]) for i in range(4, 14, 2)]
 
 
 def face_crops(frames, finder, margin, size):
     """One face crop per frame that has a face. Returns uint8 (n, size, size, 3), where n can be 0."""
     crops = []
     for frame in frames:
-        box = finder.largest_face(frame)
-        if box is not None:
-            crops.append(crop_face(frame, box, margin, size))
+        found = finder.largest_face(frame)
+        if found is not None:
+            crops.append(crop_face(frame, found[0], margin, size))
     return np.stack(crops) if crops else np.zeros((0, size, size, 3), dtype=np.uint8)

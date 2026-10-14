@@ -5,14 +5,14 @@ import pytest
 
 from meldrt.labels import LABELS
 from meldrt.pipeline.turn import Pipeline
-from meldrt.schema import TurnState, View
+from meldrt.schema import TurnState
 
 CFG = {
     "audio": {"sample_rate": 16000},
     "data": {"context_k": 2},
     "fusion": {"conflict_min_conf": 0.4},
     "vision": {"frames_per_clip": 8},
-    "reply": {"low_conf": 0.45},
+    "reply": {"low_conf": 0.5},
     "pipeline": {
         "frame_samples": 512, "start_ms": 250, "end_silence_ms": 600, "max_turn_s": 15,
         "preroll_ms": 200, "history_turns": 3, "speaker_name": "Speaker", "input_device": None,
@@ -68,12 +68,12 @@ class FakeClassifier:
         self.audio_lengths.append(len(wav))
         return self.p_audio
 
-    def face_layers(self, frame):
+    def look(self, frame):
         # a frame that is all zeros has no face in it
-        return np.ones((13, 768), dtype=np.float32) if frame.any() else None
+        return "a face" if frame.any() else None
 
-    def vision_probs(self, layers):
-        self.faces_used = len(layers)
+    def vision_probs(self, faces, from_camera):
+        self.faces_used, self.from_camera = len(faces), from_camera
         return self.p_vision
 
 
@@ -113,8 +113,9 @@ def test_turn_audio_keeps_the_lead_in_and_drops_the_closing_silence():
 def test_fusion_and_views():
     pipeline, _, _ = make(ONE_TURN, ["it was great"], alpha=0.5)
     state = run(pipeline, len(ONE_TURN))[-1]
-    assert state.text_view == View("joy", pytest.approx(0.6))
-    assert state.audio_view == View("anger", pytest.approx(0.7))
+    assert (state.text_view.label, state.text_view.confidence) == ("joy", pytest.approx(0.6))
+    assert (state.audio_view.label, state.audio_view.confidence) == ("anger", pytest.approx(0.7))
+    assert state.audio_view.probs["anger"] == pytest.approx(0.7) and len(state.audio_view.probs) == 7
     # fused: neutral 0.35, joy 0.30, anger 0.35 -> the first of the tied labels, neutral
     assert state.probs["joy"] == pytest.approx(0.30)
     assert state.probs["anger"] == pytest.approx(0.35)
@@ -170,8 +171,19 @@ def test_reply_streams_tokens_then_done_and_is_remembered(monkeypatch):
     assert pipeline.history[-1] == {"transcript": "how are you", "label": "neutral", "reply": "Hi there!"}
     # the prompt holds the earlier turn as chat history and the current turn last
     messages = prompts[0]
-    assert messages[1] == {"role": "user", "content": "hello"}
-    assert messages[-1]["role"] == "user" and messages[-1]["content"].startswith("how are you")
+    assert {"role": "user", "content": "hello"} in messages
+    assert messages[-1]["role"] == "user" and messages[-1]["content"].endswith("how are you")
+
+
+def test_a_reply_that_is_cut_short_is_still_remembered(monkeypatch):
+    monkeypatch.setattr("meldrt.pipeline.turn.stream_reply", lambda prompt, reply_cfg: iter(["Hi ", "there", "!"]))
+    pipeline, _, _ = make(ONE_TURN, ["hello"])
+    state = run(pipeline, len(ONE_TURN))[-1]
+    reply = pipeline.reply(state)
+    next(reply)
+    next(reply)
+    reply.close()                                 # the listener stops: the person cut in
+    assert pipeline.history[-1]["reply"] == "Hi there"
 
 
 def test_reset_forgets_the_conversation():
@@ -265,7 +277,7 @@ def test_faces_seen_during_the_turn_join_the_fusion():
     pipeline.push_image(NO_FACE)
     state = run(pipeline, len(ONE_TURN))[-1]
     assert classifier.faces_used == 3 and state.faces_seen == 3
-    assert state.vision_view == View(label="sadness", confidence=pytest.approx(0.8))
+    assert (state.vision_view.label, state.vision_view.confidence) == ("sadness", pytest.approx(0.8))
     # by hand: 0.5 text + 0.25 audio + 0.25 vision
     assert state.probs["joy"] == pytest.approx(0.5 * 0.6)
     assert state.probs["anger"] == pytest.approx(0.25 * 0.7)
@@ -277,7 +289,7 @@ def test_faces_seen_during_the_turn_join_the_fusion():
 
 def test_a_face_from_before_the_turn_is_not_used():
     pipeline, _ = make_with_vision()
-    pipeline.faces.append((time.perf_counter() - 60, np.ones((13, 768), dtype=np.float32)))
+    pipeline.faces.append((time.perf_counter() - 60, "an old face", True))
     state = run(pipeline, len(ONE_TURN))[-1]
     assert state.vision_view is None and state.faces_seen == 0
     assert state.probs["joy"] == pytest.approx(0.5 * 0.6)          # falls back to text and audio
@@ -305,6 +317,51 @@ def test_the_state_event_carries_the_face_view():
     event = run(pipeline, len(ONE_TURN))[-1].to_event()
     assert event["views"]["vision"] == {"label": "sadness", "confidence": 0.8}
     assert event["face_text_conflict"] is True and event["faces_seen"] == 1
+
+
+def test_the_classifier_is_told_whether_the_faces_came_from_a_camera():
+    pipeline, classifier = make_with_vision()
+    pipeline.push_image(FACE)
+    run(pipeline, len(ONE_TURN))
+    assert classifier.from_camera is False        # a clip's video
+    pipeline, classifier = make_with_vision()
+    pipeline.push_image(FACE, from_camera=True)
+    run(pipeline, len(ONE_TURN))
+    assert classifier.from_camera is True
+
+
+def test_faces_are_used_for_one_turn_only():
+    classifier = FakeClassifier(JOY, ANGER)
+    classifier.p_vision = SADNESS
+    pipeline = Pipeline(FakeVad(ONE_TURN * 2), FakeAsr(["hello", "again"]), classifier, CFG, alpha=0.5, sample_rate=16000,
+                        weights3=(0.5, 0.25, 0.25))
+    pipeline.push_image(FACE)
+    first, second = [s for s in run(pipeline, len(ONE_TURN) * 2) if s]
+    assert first.faces_seen == 1 and second.faces_seen == 0
+
+
+def test_push_image_hands_back_what_it_saw():
+    pipeline, _ = make_with_vision()
+    assert pipeline.push_image(FACE) == "a face"
+    assert pipeline.push_image(NO_FACE) is None
+
+
+def test_the_temperature_changes_the_confidence_but_not_the_label():
+    plain, _, _ = make(ONE_TURN, ["hello"])
+    sharp = Pipeline(FakeVad(ONE_TURN), FakeAsr(["hello"]), FakeClassifier(JOY, ANGER), CFG, alpha=0.5,
+                     sample_rate=16000, temperature=0.5)
+    before, after = run(plain, len(ONE_TURN))[-1], run(sharp, len(ONE_TURN))[-1]
+    # fused is neutral 0.35, anger 0.35, joy 0.30; at temperature 0.5 every value is squared and rescaled
+    squares = {"neutral": 0.35 ** 2, "anger": 0.35 ** 2, "joy": 0.30 ** 2}
+    assert after.label == before.label
+    assert after.probs["joy"] == pytest.approx(squares["joy"] / sum(squares.values()))
+    assert after.confidence > before.confidence
+
+
+def test_keep_warm_runs_the_audio_model_on_half_a_second_of_silence():
+    pipeline, _, classifier = make(ONE_TURN, ["hello"])
+    pipeline.keep_warm()
+    assert classifier.audio_lengths == [8000]
 
 
 def test_clearing_audio_also_forgets_the_faces():

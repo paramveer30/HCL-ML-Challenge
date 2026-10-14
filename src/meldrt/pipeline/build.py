@@ -27,7 +27,10 @@ def build_pipeline(sample_rate):
         # the three-model weights were chosen on dev by train/tune_fusion3.py
         with open(Path(cfg["fusion"]["run_dir"]) / "weights3.json", encoding="utf-8") as f:
             weights3 = json.load(f)["weights"]
-    return Pipeline(vad, asr, classifier, cfg, alpha, sample_rate, weights3)
+    # the temperature was fitted on dev by train/calibrate.py
+    with open(Path(cfg["fusion"]["run_dir"]) / "calibration.json", encoding="utf-8") as f:
+        temperature = json.load(f)["temperature"]
+    return Pipeline(vad, asr, classifier, cfg, alpha, sample_rate, weights3, temperature)
 
 
 def build_speaker(play=True):

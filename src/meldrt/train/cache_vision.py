@@ -11,11 +11,11 @@ from pathlib import Path
 import cv2
 import numpy as np
 import torch
-from transformers import ViTModel
+from transformers import ViTForImageClassification
 
 from meldrt.config import load_config
 from meldrt.data.video import FaceFinder, face_crops, read_frames
-from meldrt.models.vision import frame_layers, mean_over_faces
+from meldrt.models.vision import face_outputs, mean_over_faces
 
 finder = None       # one face detector per worker process
 
@@ -29,7 +29,7 @@ def start_worker(detector_file, min_score, min_face_px, detect_width):
 def clip_faces(job):
     path, k, max_seconds, margin, size = job
     frames = read_frames(path, k, max_seconds)
-    return Path(path).stem, len(frames), face_crops(frames, finder, margin, size)
+    return Path(path).stem, face_crops(frames, finder, margin, size)
 
 
 def cache_split(name, cfg, model, device, pool, batch_clips=48):
@@ -54,12 +54,12 @@ def cache_split(name, cfg, model, device, pool, batch_clips=48):
         start = n * batch_clips
         results = waiting.get()
         waiting = pool.map_async(clip_faces, batches[n + 1]) if n + 1 < len(batches) else None
-        found = [(stem, crops) for stem, _, crops in results if len(crops)]
+        found = [(stem, crops) for stem, crops in results if len(crops)]
         known_no_face.update(Path(job[0]).stem for job in batch)
         known_no_face.difference_update(stem for stem, _ in found)
         if found:
             faces = np.concatenate([crops for _, crops in found])
-            layers = np.concatenate([frame_layers(faces[i : i + 64], model, device) for i in range(0, len(faces), 64)])
+            layers = np.concatenate([face_outputs(faces[i : i + 64], model, device)[0] for i in range(0, len(faces), 64)])
             first = 0
             for stem, crops in found:
                 # save under a temporary name, then rename, so a killed run leaves no half-written file
@@ -87,8 +87,8 @@ if __name__ == "__main__":
     cfg = load_config()
     v = cfg["vision"]
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    # the checkpoint also holds a 7-way expression classifier; we only use the encoder under it
-    model = ViTModel.from_pretrained(v["model"], add_pooling_layer=False).to(device).eval()
+    # the ViT comes with a 7-way expression classifier; only the features under it are cached here
+    model = ViTForImageClassification.from_pretrained(v["model"]).to(device).eval()
     with Pool(args.workers, start_worker, (v["detector_file"], v["min_face_score"], v["min_face_px"], v["detect_width"])) as pool:
         for name in args.splits:
             cache_split(name, cfg, model, device, pool)

@@ -14,18 +14,41 @@
   </header>
 
   <main>
-    <!-- the middle of the page: talk to it -->
-    <section class="talk-area" aria-label="Talk">
-      <p class="status" id="status" data-state="idle" role="status" aria-live="polite">status: <span id="status-text">ready</span><span class="cursor" aria-hidden="true">_</span></p>
-      <button class="talk" id="talk" type="button" aria-pressed="false">[ hold to talk ]</button>
-      <p class="dim">or hold the space bar</p>
-      <div class="more-controls">
-        <label for="clip" class="dim">replay a sample</label>
-        <select id="clip"></select>
-        <button id="play" type="button">[ play ]</button>
-        <label class="check"><input type="checkbox" id="mock" checked><span>mock mode</span></label>
-        <label class="check"><input type="checkbox" id="camera"><span>camera</span></label>
-        <button id="clear" type="button">[ clear ]</button>
+    <!-- one row of controls: the mode on the left, what you do in that mode in the middle, the rest on the right -->
+    <section class="controls" aria-label="Controls">
+      <div class="group">
+        <div class="row">
+          <span class="group-title">mode</span>
+          <button class="choice" id="mode-live" type="button" aria-pressed="true">[ live ]</button>
+          <button class="choice" id="mode-samples" type="button" aria-pressed="false">[ sample clips ]</button>
+        </div>
+        <p class="dim small" id="mode-note"></p>
+      </div>
+
+      <div class="group middle">
+        <p class="status" id="status" data-state="loading" role="status" aria-live="polite">status: <span id="status-text">connecting</span><span class="cursor" aria-hidden="true">_</span></p>
+        <!-- live: talk to the robot -->
+        <div class="mode-block" id="live-block">
+          <button class="talk" id="talk" type="button" aria-pressed="false" disabled>[ hold to talk ]</button>
+          <p class="dim small">or hold the space bar. talking again cuts the robot off.</p>
+        </div>
+        <!-- sample clips: the robot watches a recorded clip -->
+        <div class="mode-block" id="samples-block" hidden>
+          <div class="row">
+            <select id="clip" aria-label="Sample clip"></select>
+            <button class="talk" id="play" type="button" disabled>[ play clip ]</button>
+          </div>
+          <p class="dim small" id="clip-note">the clip plays in the box on the right and the robot answers it.</p>
+        </div>
+      </div>
+
+      <div class="group right">
+        <div class="row" id="camera-switch">
+          <span class="group-title">camera</span>
+          <button class="choice" id="camera-on" type="button" aria-pressed="false">[ on ]</button>
+          <button class="choice" id="camera-off" type="button" aria-pressed="true">[ off ]</button>
+        </div>
+        <button id="clear" type="button">[ clear conversation ]</button>
       </div>
     </section>
 
@@ -35,7 +58,7 @@
         <h2 id="log-title">conversation</h2>
         <div class="box-body" id="log-body">
           <ol id="log" aria-live="polite"></ol>
-          <p class="dim" id="log-empty">nothing yet. hold the button and say something.</p>
+          <p class="dim" id="log-empty">nothing yet.</p>
         </div>
       </section>
 
@@ -67,7 +90,7 @@
         <h2 id="camera-title">camera</h2>
         <div class="box-body">
           <div id="camera-body"><p class="dim">off</p></div>
-          <p class="dim small" id="faces-note">tick camera to let the face model see you while you talk. images stay on this computer.</p>
+          <p class="dim small" id="faces-note"></p>
         </div>
       </section>
     </div>

@@ -18,10 +18,10 @@ from meldrt.data.meld import load_split
 from meldrt.eval.ablation import ablation_predictions, vision_predictions
 from meldrt.eval.metrics import confusion, f1_summary, per_class_f1
 from meldrt.labels import LABEL2ID, LABELS
-from meldrt.models.audio import AudioHead
+from meldrt.models.head import LayerMixHead
 from meldrt.models.fusion import softmax
 from meldrt.models.text import predict_logits
-from meldrt.train.train_audio import predict
+from meldrt.train.train_head import predict
 from meldrt.train.train_text import make_examples
 
 
@@ -50,7 +50,7 @@ def main():
     # audio head on the cached features
     a = cfg["audio_head"]
     feats, has_audio = load_features(df, args.split, cfg)
-    head = AudioHead(hidden=a["hidden"], dropout=a["dropout"]).to(device)
+    head = LayerMixHead(hidden=a["hidden"], dropout=a["dropout"]).to(device)
     head.load_state_dict(torch.load(a["checkpoint"], map_location=device))
     p_audio = np.full((len(df), len(LABELS)), np.nan, dtype=np.float32)
     p_audio[has_audio] = softmax(predict(head, torch.from_numpy(feats).to(device)))
@@ -67,7 +67,7 @@ def main():
     has_face = np.zeros(len(df), dtype=bool)
     if has_vision_model:
         face_feats, has_face = load_features(df, args.split, cfg, cfg["vision"]["feature_root"])
-        vision_head = AudioHead(hidden=v["hidden"], dropout=v["dropout"]).to(device)
+        vision_head = LayerMixHead(hidden=v["hidden"], dropout=v["dropout"]).to(device)
         vision_head.load_state_dict(torch.load(v["checkpoint"], map_location=device))
         p_vision = np.full((len(df), len(LABELS)), np.nan, dtype=np.float32)
         p_vision[has_face] = softmax(predict(vision_head, torch.from_numpy(face_feats).to(device)))

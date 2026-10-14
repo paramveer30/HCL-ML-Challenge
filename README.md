@@ -74,12 +74,14 @@ Delay after a turn ends, in ms, over 50 replayed turns on a GTX 1660 Ti (`script
 
 | | p50 | p95 |
 | --- | ---: | ---: |
-| State ready | 269 | 462 |
-| First reply token | 356 | 529 |
-| Full reply | 478 | 734 |
-| First spoken sound ready | 578 | 784 |
+| State ready | 279 | 516 |
+| First reply token | 352 | 635 |
+| Full reply | 497 | 834 |
+| First spoken sound ready | 582 | 844 |
 
-Before these clocks start, the pipeline waits 608 ms of silence to decide the turn is over. These are with the face model on and each clip's video fed in next to its audio; one video picture takes 70 ms (face detection plus the ViT) while the person is still speaking. Peak GPU memory was 5,446 MiB with every model loaded, of which 1,819 MiB belonged to other programs.
+Before these clocks start, the pipeline waits 608 ms of silence to decide the turn is over. These are with the face model on and each clip's video fed in next to its audio; one video picture takes 67 ms (face detection plus the ViT) while the person is still speaking. Peak GPU memory was 4,788 MiB with every model loaded, of which 975 MiB belonged to other programs.
+
+The confidence shown with the emotion is calibrated on dev: averaging a sharp text model with a flat audio model made the fused number too low (right 66% of the time, average confidence 0.51). One temperature fitted on dev brings the average to 0.63 and never changes the label. Turns shown at 0.8 to 0.9 were right 82% of the time on dev.
 
 Learned parameters on the inference path: 2,088,681,413, which is 34.8% of the 6 billion cap (`scripts/count_params.py`).
 
@@ -125,6 +127,8 @@ python -m meldrt.train.tune_fusion       # picks alpha on dev
 python -m meldrt.train.cache_vision      # largest face in 8 frames per clip, frozen ViT features, about 25 minutes
 python -m meldrt.train.train_vision      # trains the vision head, under a minute
 python -m meldrt.train.tune_fusion3      # picks the three-model weights on dev
+python -m meldrt.train.calibrate         # fits the temperature that makes the fused confidence honest
+python scripts/make_samples.py           # the sample clips for the web page, from dev
 python scripts/final_eval.py --split dev # checks the scoring script without touching test
 python scripts/final_eval.py             # the one test run
 ```
@@ -166,7 +170,7 @@ Or use the web page, which shows the same turn in a browser: the conversation on
 python -m uvicorn ui.server:app --host 127.0.0.1 --port 8000
 ```
 
-Open http://127.0.0.1:8000. The page starts in mock mode, which needs no models. Untick **mock mode** to load the real ones, then hold the talk button (or the space bar) while you speak. Tick **camera** and the face model sees you while you talk: this is the three-input interaction. See `ui/README.md`.
+Open http://127.0.0.1:8000. The models load when the page opens. It has two modes, both on the real models. In `[ live ]` (where it starts) the camera is on, with a box and five points drawn on your face, and you hold the talk button or the space bar while you speak: this is the three-input interaction. In `[ sample clips ]` the robot watches a recorded MELD clip instead, with its video shown on the page. Build the clips once with `python scripts/make_samples.py`. See `ui/README.md`.
 
 To run without the face models, set `pipeline.use_vision: false` in `configs/default.yaml`.
 
@@ -184,11 +188,11 @@ configs/default.yaml      every path, threshold, and model name
 src/meldrt/
   labels.py  schema.py  config.py
   data/      MELD loading, text cleanup, context, audio extraction, video frames and face crops, cached features
-  models/    text input format, audio head (also used for vision), face features, late fusion
-  train/     feature caching, text, audio and vision training, fusion weight tuning
+  models/    text input format, audio and face features, the head used on both, late fusion and calibration
+  train/     feature caching, text, audio and vision training, fusion weights, calibration
   eval/      metrics, ablation rows, parameter counting
   pipeline/  voice detector, endpointer, speech recognition, classifier, turn loop, reply, voice
-scripts/     final_eval, replay, live, bench_latency, count_params, fetch_models
+scripts/     final_eval, replay, live, bench_latency, count_params, fetch_models, make_samples
 ui/          the local web page: FastAPI server, pipeline adapter, static files
 tests/       run on CPU in seconds, with no dataset and no model downloads
 ```

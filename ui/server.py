@@ -1,4 +1,4 @@
-"""Local web UI server: static files, a list of sample clips, and one WebSocket.
+"""Local web UI server: static files, the list of sample clips and their videos, and one WebSocket.
 
 Run from the repository root:  python -m uvicorn ui.server:app --host 127.0.0.1 --port 8000
 """
@@ -11,18 +11,13 @@ from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
-from ui.pipeline_adapter import MockPipeline, RealPipeline
+from ui.pipeline import PagePipeline
 
 STATIC_DIR = Path(__file__).parent / "static"
 CHUNK_BYTES = 1024          # 512 samples of 16-bit audio
 
 app = FastAPI(title="MELD-RT")
-mock_pipeline = MockPipeline()
-real_pipeline = RealPipeline()
-
-
-def pick(mock):
-    return mock_pipeline if mock else real_pipeline
+pipeline = PagePipeline()
 
 
 @app.middleware("http")
@@ -34,14 +29,14 @@ async def no_cache(request, call_next):
 
 
 @app.get("/clips")
-def clips(mock: bool = True):
-    return {"clips": pick(mock).list_clips()}
+def clips():
+    return {"clips": pipeline.list_clips()}
 
 
 @app.get("/clip-video/{name}")
 def clip_video(name: str):
-    """The video that belongs to a real sample, so the page can show what the face model is looking at."""
-    path = real_pipeline.video_of(Path(name).name)
+    """The video that belongs to a sample clip, so the page can show what the robot is watching."""
+    path = pipeline.video_of(Path(name).name)
     if path is None:
         raise HTTPException(status_code=404)
     return FileResponse(path, media_type="video/mp4")
@@ -62,7 +57,7 @@ async def forward(websocket, events):
         async for event in events:
             await websocket.send_json(event)
     except Exception as error:
-        # for example: a checkpoint is missing, or Ollama is not running
+        # for example: Ollama stopped running in the middle of a conversation
         await websocket.send_json({"type": "notice", "text": f"that did not work: {error}"})
         await websocket.send_json({"type": "status", "state": "idle"})
 
@@ -70,10 +65,20 @@ async def forward(websocket, events):
 @app.websocket("/ws")
 async def ws(websocket: WebSocket):
     await websocket.accept()
-    await websocket.send_json({"type": "status", "state": "idle"})
-    mock = True
     audio = None            # the queue for the turn being recorded, while the talk button is held
     turn = None             # the task that is running the current turn
+    # the models start loading as soon as a page connects; the page keeps its buttons off until they are ready
+    loading = asyncio.create_task(forward(websocket, pipeline.prepare()))
+
+    def start(events):
+        """Starts a turn. If one is still running (the robot is mid-answer), it is cut short first:
+        the person talking again matters more than the robot finishing its sentence."""
+        nonlocal turn
+        if turn is not None and not turn.done():
+            pipeline.interrupt()
+            turn.cancel()
+        turn = asyncio.create_task(forward(websocket, events))
+
     try:
         while True:
             message = await websocket.receive()
@@ -86,37 +91,33 @@ async def ws(websocket: WebSocket):
                 continue
 
             control = json.loads(message["text"])
-            busy = turn is not None and not turn.done()
-            if control["type"] == "mode":
-                mock = bool(control["mock"])
-                if not mock and not busy:
-                    # start loading the real models now, so the first turn does not have to wait for them
-                    turn = asyncio.create_task(forward(websocket, real_pipeline.prepare()))
-            elif control["type"] == "clear" and not busy:
-                pick(mock).reset()
-            elif control["type"] == "frame":
-                # one camera image; the face model runs in a worker thread so the audio keeps flowing
-                if not mock:
-                    jpeg = base64.b64decode(control["jpeg"])
-                    await asyncio.get_running_loop().run_in_executor(None, real_pipeline.add_frame, jpeg)
-            elif control["type"] == "talk" and control["on"] and not busy:
+            if not loading.done():
+                continue
+            if control["type"] == "frame":
+                # one camera image: the face model looks at it in a worker thread and the page gets back
+                # where the face is, so it can draw it
+                jpeg = base64.b64decode(control["jpeg"])
+                face = await asyncio.get_running_loop().run_in_executor(None, pipeline.look, jpeg)
+                if face is not None:
+                    await websocket.send_json(face)
+            elif control["type"] == "clear":
+                pipeline.reset()
+            elif control["type"] == "talk" and control["on"]:
                 audio = asyncio.Queue()
                 await websocket.send_json({"type": "status", "state": "listening"})
-                turn = asyncio.create_task(forward(websocket, pick(mock).run_turn(chunks_from(audio))))
-            elif control["type"] == "talk" and not control["on"] and audio is not None:
+                start(pipeline.run_turn(chunks_from(audio)))
+            elif control["type"] == "talk" and audio is not None:
                 audio.put_nowait(None)
                 audio = None
-            elif control["type"] == "replay" and not busy:
+            elif control["type"] == "replay":
                 await websocket.send_json({"type": "status", "state": "listening"})
-                turn = asyncio.create_task(forward(websocket, pick(mock).run_clip(control["clip"])))
-            elif control["type"] == "replay" or (control["type"] == "talk" and control["on"]):
-                # a turn or the model loading is still running; say so instead of ignoring the click
-                await websocket.send_json({"type": "notice", "text": "still busy. try again in a moment."})
+                start(pipeline.run_clip(control["clip"]))
     except WebSocketDisconnect:
         pass
     finally:
-        if turn is not None:
-            turn.cancel()
+        for task in (turn, loading):
+            if task is not None:
+                task.cancel()
 
 
 # last, so /clips and /ws are matched first

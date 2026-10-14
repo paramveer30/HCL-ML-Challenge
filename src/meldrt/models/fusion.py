@@ -16,6 +16,29 @@ def late_fuse(p_text, p_audio, alpha):
     return alpha * p_text + (1 - alpha) * p_audio
 
 
+def sharpen(probs, temperature):
+    """Raises probabilities, shape (7,) or (n, 7), to the power 1 / temperature and rescales them to sum to 1.
+
+    Below 1 the distribution gets more peaked, above 1 flatter. The order of the labels never changes,
+    so the top label stays the same: only the confidence moves.
+    """
+    powered = probs ** (1.0 / temperature)
+    return powered / powered.sum(axis=-1, keepdims=True)
+
+
+def fit_temperature(probs, y_true, low=0.3, high=2.0, step=0.05):
+    """The temperature on a grid that gives the true labels the highest average log probability.
+
+    Returns (temperature, average negative log probability before, after).
+    """
+    def loss(p):
+        return float(-np.mean(np.log(p[np.arange(len(y_true)), y_true] + 1e-12)))
+
+    grid = [round(low + i * step, 6) for i in range(round((high - low) / step) + 1)]
+    best = min(grid, key=lambda temperature: loss(sharpen(probs, temperature)))
+    return best, loss(probs), loss(sharpen(probs, best))
+
+
 def fill_missing_audio(p_text, p_audio, has_audio):
     """Rows with no audio get the text probabilities, so their fused result is text alone for any alpha."""
     return np.where(has_audio[:, None], p_audio, p_text)

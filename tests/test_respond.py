@@ -3,8 +3,8 @@ import json
 from meldrt.pipeline.respond import stream_reply
 
 REPLY_CFG = {
-    "url": "http://127.0.0.1:11434", "model": "qwen2.5:1.5b", "max_tokens": 64,
-    "temperature": 0.6, "seed": 0, "keep_alive": "30m",
+    "url": "http://127.0.0.1:11434", "model": "qwen2.5:1.5b", "max_tokens": 64, "context_tokens": 2048,
+    "temperature": 0.6, "seed": 0, "keep_alive": "30m", "stop": ["How can I"],
 }
 MESSAGES = [{"role": "system", "content": "rules"}, {"role": "user", "content": "hello"}]
 
@@ -42,4 +42,4 @@ def test_stream_reply_yields_pieces_and_skips_the_empty_last_line(monkeypatch):
     assert sent["body"]["model"] == "qwen2.5:1.5b"
     assert sent["body"]["messages"] == MESSAGES
     assert sent["body"]["stream"] is True
-    assert sent["body"]["options"] == {"num_predict": 64, "temperature": 0.6, "seed": 0}
+    assert sent["body"]["options"] == {"num_predict": 64, "num_ctx": 2048, "temperature": 0.6, "seed": 0, "stop": ["How can I"]}

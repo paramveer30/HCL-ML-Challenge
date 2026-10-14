@@ -1,7 +1,15 @@
 import numpy as np
 import pytest
 
-from meldrt.models.fusion import fill_missing_audio, late_fuse, softmax, tone_text_conflict, tune_alpha
+from meldrt.models.fusion import (
+    fill_missing_audio,
+    fit_temperature,
+    late_fuse,
+    sharpen,
+    softmax,
+    tone_text_conflict,
+    tune_alpha,
+)
 
 
 def probs(*pairs):
@@ -122,3 +130,37 @@ def test_no_conflict_when_one_side_is_unsure():
     p_audio = probs((3, 0.35), (0, 0.33), (2, 0.32))     # different label, but only 0.35 sure
     assert not tone_text_conflict(p_text, p_audio, min_conf=0.4)
     assert tone_text_conflict(p_text, p_audio, min_conf=0.3)
+
+
+# --- sharpen and fit_temperature ---
+
+def test_sharpen_by_hand():
+    p = np.array([0.6, 0.3, 0.1])
+    out = sharpen(p, 0.5)                       # temperature 0.5 squares every value
+    assert out == pytest.approx(np.array([0.36, 0.09, 0.01]) / 0.46)
+
+
+def test_sharpen_keeps_the_order_and_the_sum():
+    p = np.array([[0.5, 0.3, 0.2], [0.1, 0.2, 0.7]])
+    for temperature in [0.5, 1.0, 2.0]:
+        out = sharpen(p, temperature)
+        assert out.sum(axis=1) == pytest.approx([1.0, 1.0])
+        assert out.argmax(axis=1).tolist() == [0, 2]
+    assert sharpen(p, 1.0) == pytest.approx(p)
+
+
+def test_fit_temperature_sharpens_a_model_that_is_too_modest():
+    # always right, but only 60% sure: the best temperature is the lowest on the grid
+    probs = np.tile([0.6, 0.3, 0.1], (20, 1))
+    temperature, before, after = fit_temperature(probs, np.zeros(20, dtype=int))
+    assert temperature == pytest.approx(0.3)
+    assert after < before
+
+
+def test_fit_temperature_flattens_a_model_that_is_too_sure():
+    # 95% sure but right only half the time
+    probs = np.tile([0.95, 0.04, 0.01], (20, 1))
+    y = np.array([0, 1] * 10)
+    temperature, before, after = fit_temperature(probs, y)
+    assert temperature > 1.0
+    assert after < before

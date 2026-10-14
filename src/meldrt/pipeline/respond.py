@@ -3,48 +3,60 @@ import json
 import urllib.request
 
 RULES = (
-    "You are a small, friendly robot having a spoken conversation with one person. "
-    'Speak to them directly, as "you". '
-    "Reply in at most 2 short sentences, in plain English. "
-    "Respond to what they just said and show you noticed how they feel. "
-    "Each of their messages ends with a private note in square brackets about how they sound. "
-    "Follow the note, but never read it out, and never mention notes, confidence, or analysis. "
-    "Do not greet them unless they just greeted you, and do not repeat your earlier answers."
+    "You are a small companion robot sitting next to one person, talking out loud with them. "
+    "Answer in one or two short spoken sentences.\n"
+    "Every message from them starts with a line in round brackets that says how they seem. "
+    "Let it set your tone. Never repeat or mention that line.\n"
+    "A good answer picks up a concrete detail from what they just said and reacts to it the way a friend would: "
+    "glad about good news, gentle about bad news, calm when they are angry. "
+    "You may add one short question about that same detail. If they ask you something, just answer it.\n"
+    "Only talk about how they sound or look when that line says their words and their voice or face disagree. "
+    "If nothing stands out, or it is hard to tell, just answer what they said.\n"
+    "Never offer help or to fetch anything, never ask how you can help, never say you understand, never give advice, "
+    "never greet them unless they greeted you, and never say something you already said."
 )
 
+# a few example turns, given to the model as if they had happened, so it copies their shape
+EXAMPLES = [
+    ("(They seem happy.)\nI finally passed my driving test!", "You passed! No more waiting for the bus. Where are you driving first?"),
+    ("(They seem sad.)\nMy flight got cancelled and I'm stuck here overnight.", "Stuck overnight, that's rough. Did they at least give you a hotel?"),
+    ("(Their words sound calm, but their voice sounds sad.)\nIt's fine.", "You say it's fine, but you don't sound fine. What happened?"),
+    ("(Nothing stands out in how they sound.)\nHey there.", "Hey! Good to see you. What are you up to?"),
+]
 
-def state_note(state, low_conf):
-    """One line telling the chat model what we think the person feels, and what to do about it."""
-    # unsure, or words and voice point different ways: ask, don't assume
+# how each label reads in a sentence about a person
+SEEMS = {"neutral": "calm", "joy": "happy", "surprise": "surprised", "anger": "angry",
+         "sadness": "sad", "disgust": "disgusted", "fear": "worried"}
+
+
+def how_they_seem(state, low_conf):
+    """One short sentence telling the chat model how the person seems, from the three views."""
     if state.tone_text_conflict or state.face_text_conflict:
-        # name each thing that disagrees with the words: the voice, the face, or both
-        heard, seen = [], []
+        # the voice, the face, or both say something else than the words
+        others = []
         if state.tone_text_conflict:
-            heard, seen = [f"your voice sounds {state.audio_view.label}"], [f"sound {state.audio_view.label}"]
+            others.append(f"their voice sounds {SEEMS[state.audio_view.label]}")
         if state.face_text_conflict:
-            heard.append(f"your face looks {state.vision_view.label}")
-            seen.append(f"look {state.vision_view.label}")
-        return (
-            f"Private note: your words sound {state.text_view.label}, but {' and '.join(heard)}. "
-            "Robot: do not assume which is true. Tell them kindly that they "
-            f"{' and '.join(seen)} even though their words say otherwise, then ask one short question."
-        )
+            others.append(f"their face looks {SEEMS[state.vision_view.label]}")
+        return f"Their words sound {SEEMS[state.text_view.label]}, but {' and '.join(others)}."
     if state.confidence < low_conf:
-        return (
-            "Private note: it is unclear how they feel. "
-            "Robot: respond to what they said, do not name a feeling, and gently check in."
-        )
-    return f"Private note: they sound {state.label}."
+        return "It is hard to tell how they feel."
+    if state.label == "neutral":
+        return "Nothing stands out in how they sound."
+    return f"They seem {SEEMS[state.label]}."
 
 
-def build_prompt(state, history, low_conf=0.45):
+def build_prompt(state, history, low_conf=0.5):
     """state: the TurnState for this turn. history: earlier turns, oldest first,
     each a dict with "transcript", "label", "reply". Returns the list of chat messages."""
     messages = [{"role": "system", "content": RULES}]
+    for said, answer in EXAMPLES:
+        messages.append({"role": "user", "content": said})
+        messages.append({"role": "assistant", "content": answer})
     for turn in history:
         messages.append({"role": "user", "content": turn["transcript"]})
         messages.append({"role": "assistant", "content": turn["reply"]})
-    messages.append({"role": "user", "content": f"{state.transcript}\n[{state_note(state, low_conf)}]"})
+    messages.append({"role": "user", "content": f"({how_they_seem(state, low_conf)})\n{state.transcript}"})
     return messages
 
 
@@ -57,8 +69,11 @@ def stream_reply(messages, reply_cfg):
         "keep_alive": reply_cfg["keep_alive"],
         "options": {
             "num_predict": reply_cfg["max_tokens"],
+            "num_ctx": reply_cfg["context_tokens"],
             "temperature": reply_cfg["temperature"],
             "seed": reply_cfg["seed"],
+            # the model stops writing as soon as it starts one of these: the stock endings of an assistant
+            "stop": reply_cfg["stop"],
         },
     }
     request = urllib.request.Request(

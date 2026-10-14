@@ -1,17 +1,17 @@
 import pytest
 import torch
 
-from meldrt.models.audio import AudioHead
+from meldrt.models.head import LayerMixHead
 
 
 def test_output_is_seven_logits_per_clip():
-    head = AudioHead()
+    head = LayerMixHead()
     feats = torch.randn(4, 13, 768)
     assert head(feats).shape == (4, 7)
 
 
 def test_layer_weights_start_equal_and_sum_to_one():
-    w = AudioHead().layer_weights()
+    w = LayerMixHead().layer_weights()
     assert w.shape == (13,)
     assert w.sum().item() == pytest.approx(1.0)
     assert torch.allclose(w, torch.full((13,), 1 / 13))
@@ -19,13 +19,13 @@ def test_layer_weights_start_equal_and_sum_to_one():
 
 def test_parameter_count():
     # 13 layer scores + (768 * 256 + 256) + (256 * 7 + 7)
-    n = sum(p.numel() for p in AudioHead().parameters())
+    n = sum(p.numel() for p in LayerMixHead().parameters())
     assert n == 13 + (768 * 256 + 256) + (256 * 7 + 7)
 
 
 def test_layers_are_mixed_before_the_mlp():
     # put all the weight on layer 5: the output must then depend on layer 5 only
-    head = AudioHead().eval()
+    head = LayerMixHead().eval()
     with torch.no_grad():
         head.layer_scores.fill_(-1e4)
         head.layer_scores[5] = 0.0
@@ -39,14 +39,14 @@ def test_layers_are_mixed_before_the_mlp():
 
 def test_equal_weights_mean_the_average_of_the_layers():
     # with equal weights, 13 copies of x mix back to x, and so does any reordering of the layers
-    head = AudioHead().eval()
+    head = LayerMixHead().eval()
     feats = torch.randn(3, 13, 768)
     shuffled = feats[:, torch.randperm(13)]
     assert torch.allclose(head(feats), head(shuffled), atol=1e-4)
 
 
 def test_gradient_reaches_the_layer_scores():
-    head = AudioHead()
+    head = LayerMixHead()
     loss = head(torch.randn(8, 13, 768)).sum()
     loss.backward()
     assert head.layer_scores.grad is not None
@@ -54,6 +54,6 @@ def test_gradient_reaches_the_layer_scores():
 
 
 def test_dropout_is_off_in_eval_mode():
-    head = AudioHead().eval()
+    head = LayerMixHead().eval()
     feats = torch.randn(2, 13, 768)
     assert torch.equal(head(feats), head(feats))

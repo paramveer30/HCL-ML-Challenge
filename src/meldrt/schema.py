@@ -8,6 +8,7 @@ class View:
 
     label: str
     confidence: float
+    probs: dict | None = None      # that model's probability for each of the 7 labels
 
 
 @dataclass

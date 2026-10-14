@@ -7,7 +7,7 @@ import numpy as np
 
 from meldrt.data.video import read_timed_frames
 from meldrt.labels import LABELS
-from meldrt.models.fusion import late_fuse, tone_text_conflict
+from meldrt.models.fusion import late_fuse, sharpen, tone_text_conflict
 from meldrt.models.text import format_target
 from meldrt.pipeline.endpointer import Endpointer
 from meldrt.pipeline.respond import build_prompt, stream_reply
@@ -22,15 +22,17 @@ def timed(fn, *args):
 
 
 def view_of(probs):
-    return View(label=LABELS[int(probs.argmax())], confidence=float(probs.max()))
+    return View(label=LABELS[int(probs.argmax())], confidence=float(probs.max()),
+                probs={name: float(p) for name, p in zip(LABELS, probs)})
 
 
 class Pipeline:
-    def __init__(self, vad, asr, classifier, cfg, alpha, sample_rate, weights3=None):
+    def __init__(self, vad, asr, classifier, cfg, alpha, sample_rate, weights3=None, temperature=1.0):
         p = cfg["pipeline"]
         if sample_rate != cfg["audio"]["sample_rate"]:
             raise ValueError(f"expected {cfg['audio']['sample_rate']} Hz audio, got {sample_rate}")
         self.vad, self.asr, self.classifier, self.alpha = vad, asr, classifier, alpha
+        self.temperature = temperature      # makes the fused confidence match how often it is right (train/calibrate.py)
         self.sample_rate = sample_rate
         self.frame_samples = p["frame_samples"]
         self.frame_ms = 1000 * self.frame_samples / sample_rate
@@ -55,7 +57,7 @@ class Pipeline:
         self.weights3 = weights3
         self.frames_per_clip = cfg["vision"]["frames_per_clip"]
         self.max_turn_s = p["max_turn_s"]
-        self.faces = deque(maxlen=p["max_faces"])     # (clock reading, face features) of recent camera frames
+        self.faces = deque(maxlen=p["max_faces"])     # (clock reading, Face, from a camera?) for recent pictures with a face
 
     def push_frame(self, frame):
         """frame: float32 array of exactly frame_samples samples. Returns a TurnState when a turn just ended."""
@@ -71,21 +73,26 @@ class Pipeline:
         elif self.endpointer.in_turn:
             self.turn.append(frame)
             if self.warm_during_silence and self.endpointer.silence_run > 0:
-                # the turn may be about to end. The GPU slows down while it sits idle during the speech,
-                # so we give it half a second of silence to chew on and throw the answer away
-                self.classifier.audio_probs(self.warm_wav)
+                # the turn may be about to end
+                self.keep_warm()
         else:
             self.recent.append(frame)
         return None
 
-    def push_image(self, frame):
-        """frame: one BGR image from a camera or a video. If it shows a face, the face is remembered
-        with the time it arrived, so the turn being spoken can use it."""
+    def keep_warm(self):
+        """The GPU slows down while it sits idle during the speech. Half a second of silence through
+        the audio model, with the answer thrown away, keeps it at full speed for the end of the turn."""
+        self.classifier.audio_probs(self.warm_wav)
+
+    def push_image(self, frame, from_camera=False):
+        """frame: one BGR image, from a live camera or from a clip's video. If it shows a face, the face
+        is remembered with the time it arrived, so the turn being spoken can use it. Returns the Face, or None."""
         if self.weights3 is None:
-            return
-        layers = self.classifier.face_layers(frame)
-        if layers is not None:
-            self.faces.append((time.perf_counter(), layers))
+            return None
+        face = self.classifier.look(frame)
+        if face is not None:
+            self.faces.append((time.perf_counter(), face, from_camera))
+        return face
 
     def read_video(self, path):
         """The pictures of a clip's video the face model should see: (seconds into the clip, BGR image) pairs,
@@ -115,8 +122,11 @@ class Pipeline:
 
         # the faces seen while this turn was being spoken: from its first sample to now
         turn_started = start - endpoint_ms / 1000 - len(wav) / self.sample_rate
-        faces = [layers for seen_at, layers in self.faces if seen_at >= turn_started]
-        p_vision, vision_ms = timed(self.classifier.vision_probs, faces) if faces else (None, 0.0)
+        seen = [(face, from_camera) for seen_at, face, from_camera in self.faces if seen_at >= turn_started]
+        self.faces.clear()      # a face belongs to one turn only
+        faces = [face for face, _ in seen]
+        from_camera = any(camera for _, camera in seen)
+        p_vision, vision_ms = timed(self.classifier.vision_probs, faces, from_camera) if faces else (None, 0.0)
 
         if p_audio is None:
             fused, audio_view, conflict = p_text, None, False
@@ -131,6 +141,8 @@ class Pipeline:
             fused = w_text * p_text + w_audio * (p_text if p_audio is None else p_audio) + w_vision * p_vision
             vision_view = view_of(p_vision)
             face_conflict = tone_text_conflict(p_text, p_vision, self.min_conf)
+
+        fused = sharpen(fused, self.temperature)
 
         self.turn_id += 1
         state = TurnState(
@@ -158,14 +170,17 @@ class Pipeline:
         """Streams the robot's reply to a state. Yields one token event per piece, then one done event."""
         messages = build_prompt(state, list(self.history)[:-1], self.reply_cfg["low_conf"])
         pieces, first_token_ms = [], None
-        for piece in stream_reply(messages, self.reply_cfg):
-            if first_token_ms is None:
-                first_token_ms = (time.perf_counter() - self.turn_ended_at) * 1000
-            pieces.append(piece)
-            yield {"type": "token", "turn_id": state.turn_id, "text": piece}
+        try:
+            for piece in stream_reply(messages, self.reply_cfg):
+                if first_token_ms is None:
+                    first_token_ms = (time.perf_counter() - self.turn_ended_at) * 1000
+                pieces.append(piece)
+                yield {"type": "token", "turn_id": state.turn_id, "text": piece}
+        finally:
+            # also when the listener stops early because the person cut in: remember what was said so far
+            text = "".join(pieces).strip().strip('"')     # the small model sometimes wraps its reply in quotes
+            self.history[-1]["reply"] = text
         reply_ms = (time.perf_counter() - self.turn_ended_at) * 1000
-        text = "".join(pieces).strip().strip('"')     # the small model sometimes wraps its reply in quotes
-        self.history[-1]["reply"] = text
         latency = {"first_token": round(first_token_ms or reply_ms), "reply": round(reply_ms)}
         yield {"type": "done", "turn_id": state.turn_id, "reply": text, "latency_ms": latency}
 

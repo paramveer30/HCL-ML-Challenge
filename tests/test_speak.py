@@ -98,3 +98,26 @@ def test_wait_returns_none_when_nothing_could_be_spoken(monkeypatch):
     speaker.say("boom")
     assert speaker.wait() is None
 
+
+
+def test_stop_drops_what_was_waiting_and_ignores_the_rest_of_the_reply(monkeypatch):
+    from meldrt.pipeline.speak import Speaker
+
+    monkeypatch.setattr("meldrt.pipeline.speak.KPipeline", FakeTTS)
+    speaker = Speaker(VOICE_CFG, play=False)
+    speaker.start_reply()
+    speaker.stop()
+    speaker.say("This comes too late.")
+    assert speaker.sentences.empty()
+    assert speaker.wait() is None                 # nothing was spoken, and wait does not hang
+
+
+def test_the_next_reply_after_a_stop_is_spoken_again(monkeypatch):
+    from meldrt.pipeline.speak import Speaker
+
+    monkeypatch.setattr("meldrt.pipeline.speak.KPipeline", FakeTTS)
+    speaker = Speaker(VOICE_CFG, play=False)
+    speaker.stop()
+    speaker.start_reply()
+    speaker.say("Back again.")
+    assert speaker.wait() is not None

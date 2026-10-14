@@ -1,15 +1,23 @@
 """Loads the trained emotion models and gives each one's probabilities for a turn."""
+from dataclasses import dataclass
 from pathlib import Path
 
 import numpy as np
 import torch
-from transformers import AutoFeatureExtractor, AutoModelForSequenceClassification, AutoTokenizer, ViTModel, WavLMModel
+from transformers import (
+    AutoFeatureExtractor,
+    AutoModelForSequenceClassification,
+    AutoTokenizer,
+    ViTForImageClassification,
+    WavLMModel,
+)
 
-from meldrt.data.video import FaceFinder, face_crops
-from meldrt.models.audio import AudioHead, clip_features
+from meldrt.data.video import FaceFinder, crop_face
+from meldrt.models.audio import clip_features
 from meldrt.models.fusion import softmax
+from meldrt.models.head import LayerMixHead
 from meldrt.models.text import predict_logits
-from meldrt.models.vision import frame_layers, mean_over_faces
+from meldrt.models.vision import face_outputs, mean_over_faces
 
 
 def keep_end(tokenizer, target, room):
@@ -22,6 +30,16 @@ def keep_end(tokenizer, target, room):
     if len(ids) <= room:
         return target
     return tokenizer.decode(ids[-room:]).strip()
+
+
+@dataclass
+class Face:
+    """What the face models saw in one picture."""
+
+    box: tuple                 # (x, y, w, h) of the face, in pixels of that picture
+    points: list               # the detector's 5 landmarks as (x, y): eyes, nose tip, mouth corners
+    layers: np.ndarray         # ViT features of the face, shape (13, 768)
+    expression: np.ndarray     # the ViT's own expression classifier, probabilities over the 7 labels
 
 
 class EmotionClassifier:
@@ -38,7 +56,7 @@ class EmotionClassifier:
         self.extractor = AutoFeatureExtractor.from_pretrained(cfg["audio"]["wavlm_model"])
         self.wavlm = WavLMModel.from_pretrained(cfg["audio"]["wavlm_model"]).to(device).eval()
         a = cfg["audio_head"]
-        self.head = AudioHead(hidden=a["hidden"], dropout=a["dropout"]).to(device).eval()
+        self.head = LayerMixHead(hidden=a["hidden"], dropout=a["dropout"]).to(device).eval()
         self.head.load_state_dict(torch.load(a["checkpoint"], map_location=device))
 
         # the face models are only loaded when the pipeline is asked to use a camera or video
@@ -47,8 +65,9 @@ class EmotionClassifier:
             v, h = cfg["vision"], cfg["vision_head"]
             self.finder = FaceFinder(v["detector_file"], v["min_face_score"], v["min_face_px"], v["detect_width"])
             self.face_margin, self.image_size = v["face_margin"], v["image_size"]
-            self.vit = ViTModel.from_pretrained(v["model"], add_pooling_layer=False).to(device).eval()
-            self.vision_head = AudioHead(hidden=h["hidden"], dropout=h["dropout"]).to(device).eval()
+            self.live_head = v["live_head"]
+            self.vit = ViTForImageClassification.from_pretrained(v["model"]).to(device).eval()
+            self.vision_head = LayerMixHead(hidden=h["hidden"], dropout=h["dropout"]).to(device).eval()
             self.vision_head.load_state_dict(torch.load(h["checkpoint"], map_location=device))
 
     def text_probs(self, context, target):
@@ -70,18 +89,26 @@ class EmotionClassifier:
             logits = self.head(torch.from_numpy(feats).unsqueeze(0).to(self.device))
         return softmax(logits[0].cpu().numpy())
 
-    def face_layers(self, frame):
-        """frame: one BGR image from a camera or a video. Returns the ViT features of the largest face
-        in it, shape (13, 768) float32, or None if there is no face."""
-        crops = face_crops([frame], self.finder, self.face_margin, self.image_size)
-        if len(crops) == 0:
+    def look(self, frame):
+        """frame: one BGR image from a camera or a video. Returns a Face for the largest face in it, or None."""
+        found = self.finder.largest_face(frame)
+        if found is None:
             return None
-        return frame_layers(crops, self.vit, self.device)[0]
+        box, points = found
+        crop = crop_face(frame, box, self.face_margin, self.image_size)
+        layers, expression = face_outputs(crop[None], self.vit, self.device)
+        return Face(box=box, points=points, layers=layers[0], expression=expression[0])
 
-    def vision_probs(self, layers):
-        """layers: the face_layers results of one turn, a list of (13, 768). Probabilities from the face, shape (7,)."""
-        # same path as training: average over the faces, float16 features, read back as float32
-        feats = mean_over_faces(np.stack(layers)).astype(np.float32)
+    def vision_probs(self, faces, from_camera):
+        """faces: the Face objects seen during one turn. Probabilities from the face, shape (7,).
+
+        Each head is used where it was trained: a camera shows one person facing it, like the photos the
+        ViT's own expression classifier learned from; a MELD clip is a TV shot, which is what our head saw.
+        """
+        if from_camera and self.live_head == "expression":
+            return np.mean([face.expression for face in faces], axis=0)
+        # the same path as training: average over the faces, float16 features, read back as float32
+        feats = mean_over_faces(np.stack([face.layers for face in faces])).astype(np.float32)
         with torch.no_grad():
             logits = self.vision_head(torch.from_numpy(feats).unsqueeze(0).to(self.device))
         return softmax(logits[0].cpu().numpy())

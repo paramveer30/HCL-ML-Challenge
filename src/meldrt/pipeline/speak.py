@@ -51,6 +51,7 @@ class Speaker:
         # synthesize once without playing, so the first real sentence is not slowed by loading
         list(self.tts("Hello.", voice=self.voice, speed=self.speed))
         self.first_audio_at = None       # clock reading when this reply's first sound started playing
+        self.stopped = False             # True from stop() until the next reply starts
         self.sentences = queue.Queue()   # text waiting to be turned into sound
         self.sounds = queue.Queue()      # sound waiting to be played
         # two workers, so the next sentence is synthesized while the current one is still playing
@@ -59,10 +60,25 @@ class Speaker:
 
     def start_reply(self):
         self.first_audio_at = None
+        self.stopped = False
 
     def say(self, sentence):
         """Queues one sentence and returns at once."""
-        self.sentences.put(sentence)
+        if not self.stopped:
+            self.sentences.put(sentence)
+
+    def stop(self):
+        """Stops talking at once: drops the sentences still waiting and cuts the sound that is playing."""
+        self.stopped = True
+        for waiting in (self.sentences, self.sounds):
+            while True:
+                try:
+                    waiting.get_nowait()
+                except queue.Empty:
+                    break
+                waiting.task_done()
+        if self.play:
+            sd.stop()
 
     def synthesize_loop(self):
         while True:
@@ -71,7 +87,7 @@ class Speaker:
             # finally, wait() would block forever and the robot would stop listening
             try:
                 chunks = [result.audio for result in self.tts(sentence, voice=self.voice, speed=self.speed)]
-                if chunks:
+                if chunks and not self.stopped:
                     self.sounds.put(torch.cat(chunks).cpu().numpy())
             except Exception as error:
                 print(f"[voice] could not speak a sentence: {error}", flush=True)
@@ -84,7 +100,7 @@ class Speaker:
             try:
                 if self.first_audio_at is None:
                     self.first_audio_at = time.perf_counter()
-                if self.play:
+                if self.play and not self.stopped:
                     sd.play(audio, KOKORO_SAMPLE_RATE, device=self.output_device)
                     sd.wait()
             except Exception as error:

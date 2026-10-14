@@ -17,10 +17,10 @@ Times in ms over 50 replayed turns (`scripts/bench_latency.py`).
 | Clock | Starts | Ends | Target (p50) | p50 | p95 |
 | --- | --- | --- | ---: | ---: | ---: |
 | `endpoint` | last voiced frame | turn judged over | about 600 | 608 | 608 |
-| `state` | turn judged over | state ready | 600 | 253 | 489 |
-| `first_token` | turn judged over | first reply token | 1,500 | 334 | 564 |
-| `reply` | turn judged over | last reply token | 3,000 | 450 | 745 |
-| `first_audio` | turn judged over | first spoken sound ready | 2,000 | 542 | 780 |
+| `state` | turn judged over | state ready | 600 | 279 | 516 |
+| `first_token` | turn judged over | first reply token | 1,500 | 352 | 635 |
+| `reply` | turn judged over | last reply token | 3,000 | 497 | 834 |
+| `first_audio` | turn judged over | first spoken sound ready | 2,000 | 582 | 844 |
 
 ## 3. System
 
@@ -62,9 +62,9 @@ Parameters on the local inference path (`scripts/count_params.py`; counted from 
 | Kokoro voice embedding | speech output | 130,560 |
 | spaCy `en_core_web_sm` | Kokoro's text front end | 1,570,514 |
 | YuNet face detector | finds faces in a picture | 53,121 |
-| ViT-base face expression encoder | face features, frozen | 85,798,656 |
+| ViT-base face expression model | face features and facial expression, frozen | 85,804,039 |
 | Vision head | face emotion, trained by us | 198,676 |
-| **Total** | | **2,174,731,866** |
+| **Total** | | **2,174,737,249** |
 
 The cap is 6,000,000,000, so the system uses 36.2% of it. Quantization changes how each number is stored, not how many there are, so the reply model counts at full size.
 
@@ -158,6 +158,21 @@ What was measured on dev before choosing:
 - Seven variants of the head (input normalization, learning rate, dropout, last layer only; two seeds each) all landed between 0.344 and 0.361, so the head is not what limits it.
 - When the face model is at least 50% sure and disagrees with a text model that is also at least 50% sure (2.1% of dev rows), the words are right 48% of the time and the face 22%.
 
+### Confidence
+
+The fused label is right 65.6% of the time on dev, but the fused probabilities said 0.51 on average: averaging a sharp text distribution with a flat audio one flattens the result. One temperature, fitted on dev by maximum likelihood, corrects the number without changing any label (`python -m meldrt.train.calibrate`). No F1 score depends on it.
+
+| On dev | Accuracy | Mean confidence | Calibration error |
+| --- | ---: | ---: | ---: |
+| Fused, as averaged | 0.656 | 0.511 | 0.145 |
+| Fused, temperature 0.70 | 0.656 | 0.634 | 0.038 |
+
+After calibration, turns shown at 0.7 to 0.8 were right 76% of the time, at 0.8 to 0.9 82%, and above 0.9 91%. Fitted on the dialogues with an even number and checked on the odd ones (and the other way round) the temperature came out at 0.75 and 0.70, with mean confidence 0.61 and 0.64 against accuracy 0.68 and 0.64 on the held-out half. The temperature was not checked on test.
+
+### Face view for a live camera
+
+For pictures from a MELD clip the vision model is the head trained on MELD (the table above). For a live camera the face view comes from the ViT's own expression classifier instead, which was trained on photos of single faces looking at the camera. On MELD dev that classifier scores 0.26 weighted F1 against 0.35 for our head, so by our own numbers it is the worse model on MELD. We use it live because a webcam picture looks like its training data and not like a TV shot, and because the MELD head read a smile at the webcam as surprise. We have no labelled webcam data, so this choice is not measured. It cannot move any reported score: the vision weight in the fusion is 0.
+
 > TODO (Param): 1 paragraph in your own words on why vision is weak on MELD (several faces, the largest is not always the speaker, the label is for the utterance and not the facial expression, TV lighting and cuts) and what it is still used for live (a third view in the state, the check-in when face and words disagree).
 
 Checked afterwards on dev only (nothing was retrained for the results above): class weights $1/\sqrt{n_c}$ against no weights and full inverse frequency.
@@ -186,7 +201,7 @@ Resampling the dev rows 2,000 times, the fusion gain over text (+0.020) has a 95
 | Full reply | 450 | 745 |
 | First spoken sound ready | 542 | 780 |
 
-With the face model on and each clip's video fed in next to its audio (the configuration that ships), the same 50 clips gave: speech recognition 228 / 415, audio branch 26 / 37, vision head 1 / 1, **state 269 / 462**, first reply token 356 / 529, full reply 478 / 734, first sound 578 / 784. One video picture costs 70 / 89 ms (face detection on the CPU plus the ViT on the GPU), paid while the person is still speaking and not after the turn ends; 49 of the 50 turns had a face. State within 600 ms on 100% of turns.
+With the face model on and each clip's video fed in next to its audio (the configuration that ships, measured last, after the reply prompt and calibration changes), the same 50 clips gave: speech recognition 241 / 453, audio branch 28 / 37, vision head 1 / 1, **state 279 / 516**, first reply token 352 / 635, full reply 497 / 834, first sound 582 / 844. One video picture costs 67 / 94 ms (face detection on the CPU plus the ViT on the GPU), paid while the person is still speaking and not after the turn ends; 49 of the 50 turns had a face. State within 600 ms on 98% of turns, first sound within 1 s on 96%.
 
 Without vision, the state met its 600 ms target on 98% of turns, the first reply token on 98%, the full reply on 100%, and the first sound on 98%. One turn of the 50 took about 2.6 s to reach the state.
 
@@ -205,11 +220,11 @@ The three changes, each measured on its own first (`DECISIONS.md`): (1) Whisper 
 
 | Resource | Observed |
 | --- | ---: |
-| GPU memory before loading anything (other programs) | 1,819 MiB |
-| GPU memory at peak, everything loaded, vision included | 5,446 MiB of 6,144 |
-| GPU memory used by the system | 3,627 MiB (3,371 without the face model) |
-| of which held by PyTorch (RoBERTa, WavLM, ViT, heads, Kokoro) | 1,887 MiB |
-| RAM at peak (our process plus Ollama) | 2,350 MiB |
+| GPU memory before loading anything (other programs) | 975 MiB |
+| GPU memory at peak, everything loaded, vision included | 4,788 MiB of 6,144 |
+| GPU memory used by the system | 3,813 MiB (3,371 without the face model) |
+| of which held by PyTorch (RoBERTa, WavLM, ViT, heads, Kokoro) | 1,825 MiB |
+| RAM at peak (our process plus Ollama) | 2,378 MiB |
 | Model load time, already downloaded | about 4 s, plus the reply model |
 
 A browser was open during the run. An earlier version of the benchmark read the memory counters twice a second from a second thread, which slowed the pipeline itself: the state p50 was 1,147 ms. Memory is now read between turns only.
@@ -242,7 +257,8 @@ PyTorch models run in fp32: the GTX 1660 series has a known half-precision probl
 > - The live path is less accurate than the offline scores. On the first 200 dev clips: offline fused 0.658 weighted / 0.525 macro F1; gold words with no dialogue context and the generic speaker name 0.615 / 0.535; the real live path (Whisper's words, no context) 0.523 / 0.379. So most of the loss comes from the recognized words (word error rate 29% on these TV clips), about 0.03 from the missing context, and almost none from the speaker name. The audio branch is identical live and offline (same top label on 248 of 248 clips).
 > - MELD is acted TV audio with laugh tracks; several clips contain more or less speech than their transcript.
 > - Pauses over 600 ms split one sentence into two turns: 11.5% of 400 dev clips came out as two or more turns, and 10.8% were not detected as a turn at all. A shorter wait would answer sooner but cut more: 14.2% at 500 ms, 18.0% at 400 ms. So the wait stayed at 600 ms.
-> - No barge-in: the microphone is ignored while the robot speaks.
+> - In the terminal script the microphone is ignored while the robot speaks. In the web page, pressing talk again cuts the robot off.
+> - The reply model is small (1.5B). With the rewritten prompt and stop phrases it picked up something the person said in 12 of 16 scripted turns (6 before) and used a stock assistant phrase in 1 (2 before, plus 2 where it read its instructions out). A 3.2B model answered more naturally but did not fit next to the other models on a 6 GB card: speech recognition time tripled. Reply quality on real conversations is not scored.
 > - Vision: the face model is weak on MELD (0.356 weighted F1 on test, most predictions neutral, fear and disgust near zero) and gets no weight in the fused label. There is no active-speaker detection: the largest face is taken, and it is not always the speaker. The head was trained on TV frames, not on a webcam, and the live camera path was not scored. In the web page the camera sends pictures only while the talk button is held.
 > - The reply model is small and does not always follow the prompt; reply quality is not scored.
 > - About 2% of utterances have no audio prediction (clips under 0.3 s).
@@ -251,7 +267,7 @@ PyTorch models run in fp32: the GTX 1660 series has a known half-precision probl
 
 Completed: text emotion model with dialogue context; audio emotion model on frozen WavLM features; late fusion with an ablation on test; a streaming turn pipeline (voice detection, endpointing, speech recognition, classification, state, streamed reply, spoken reply); replay and live scripts; a local web page that shows a turn as it happens; latency, memory, and parameter measurements; a check on dev of the weighting choices and of the accuracy lost in the live path; the three-modality extension (a vision emotion model, three-model fusion scored on test, and a live camera in the web page).
 
-Left out on purpose: active-speaker detection for the vision branch; reinforcement learning; barge-in; a stacked fusion model; multiple seeds; an ablation of the dialogue context on the full dev set; rating of reply quality; an emotion-matched voice.
+Left out on purpose: active-speaker detection for the vision branch; reinforcement learning; barge-in; a stacked fusion model; multiple seeds; an ablation of the dialogue context on the full dev set; rating of reply quality; an emotion-matched voice; a larger reply model.
 
 ## 11. External components
 

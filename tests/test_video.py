@@ -39,7 +39,7 @@ class FakeFinder:
 
     def largest_face(self, frame):
         self.calls += 1
-        return (100, 100, 80, 80) if self.calls % 2 else None
+        return ((100, 100, 80, 80), []) if self.calls % 2 else None
 
 
 def test_face_crops_keeps_only_frames_with_a_face():
