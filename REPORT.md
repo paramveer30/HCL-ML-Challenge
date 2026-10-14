@@ -29,7 +29,7 @@ All targets are met with room to spare. Speech recognition is the largest single
 
 ![Figure 2. One turn through the system.](docs/figures/system.png)
 
-The voice detector and endpointer cut the audio into turns. When a turn ends, the audio model runs first (frozen WavLM averaged over time, then my small head), then Whisper turns the speech into words and RoBERTa reads them with the last two turns as context. Camera pictures are processed while the person is still speaking, so the face costs nothing after the turn. Late fusion averages the probabilities with weights chosen on dev, and one temperature fitted on dev makes the confidence match how often the label is right. When the views disagree, or the confidence is under 0.5, the reply prompt tells the robot what each input suggests and asks it to check in instead of assuming a feeling. The reply streams from Qwen2.5-1.5B and is spoken one sentence at a time.
+The voice detector and endpointer cut the audio into turns. When a turn ends, the audio model runs first (frozen WavLM averaged over time, then my small head), then Whisper turns the speech into words and RoBERTa reads them with the last two turns as context. Camera pictures are processed while the person is still speaking, so the face costs nothing after the turn. Late fusion averages the probabilities (live: words 0.25, voice 0.30, face 0.45), and a temperature fitted on dev makes the confidence match how often the label is right. When the views disagree, or the confidence is under 0.5, the reply prompt tells the robot what each input suggests and asks it to check in instead of assuming a feeling. The reply streams from Qwen2.5-1.5B and is spoken one sentence at a time.
 
 Learned parameters on the inference path, counted from the loaded models by `scripts/count_params.py`:
 
@@ -64,8 +64,8 @@ MELD has 9,989 / 1,109 / 2,610 utterances in train / dev / test; neutral is 47% 
 
 - **Text is the strong model, and rare emotions are weak.** Both models beat the baseline by a wide margin, but fear and disgust are around 0.2 F1, and most of their mistakes go to neutral (Figure 4).
 - **Fusion did not carry over to test.** It gained 0.020 weighted F1 on dev (95% interval +0.002 to +0.037) and lost 0.0015 on test. The weight came from a nearly flat curve on 1,109 rows. I did not retune after reading test. The voice stays because it lets the robot notice when tone and words disagree.
-- **The face gets no weight on MELD.** The dev search set its weight to 0: the largest face is often not the speaker, and MELD labels the utterance, not the expression. Live, with one person facing the camera, the face is a third view and a reason to check in.
-- **Voice and face do not override the words.** When they agree against the words (150 dev rows), the words are right 47% of the time and the pair 31%, so following the pair would lower dev F1 from 0.635 to 0.601. Those turns are flagged and the robot checks in instead.
+- **The face counts live, by my choice.** The pure dev search gave the face weight 0 (the scored row above): on MELD the largest face is often not the speaker, and the label belongs to the sentence, not the expression. That left the words in charge even when my voice and face clearly said otherwise. So the live system uses words 0.25, voice 0.30, face 0.45: how someone sounds and looks outweighs what they say, which is how I want a companion robot to behave. I chose this split by testing it live on webcam turns. On MELD it costs accuracy: 0.599 / 0.437 on dev against 0.635 / 0.495 for the dev-best weights, because MELD's faces are TV shots where the largest face is often not the speaker. When voice and face agree against the words (150 dev turns) it follows them on 95. Its temperature is refitted on dev (0.50, calibration error 0.026). The test rows above keep the dev-best weights; this mix was not scored on test.
+- **Disagreement is still flagged.** When the face or the voice disagrees with the words, the page names it and the robot checks in instead of assuming a feeling.
 - **Confidence is calibrated.** Averaging a sharp text model with a flat audio one made the shown confidence too low (0.51 average while right 66% of the time). A temperature of 0.70 fixes the number without changing any label.
 - **The live path is less accurate than these scores.** On 200 dev clips, weighted F1 drops from 0.658 offline to 0.523 live, mostly because Whisper's words differ from the transcript (29% word error rate on TV audio).
 
@@ -116,7 +116,7 @@ Left out on purpose: reinforcement learning; active-speaker detection; automatic
 
 1. Fine-tune the text model on Whisper's transcripts, since recognition errors cost the most live accuracy.
 2. Fine-tune the top WavLM layers and pool over time with attention instead of averaging.
-3. Record a small labelled webcam set, including sarcasm, to measure the live face and decide with data when voice and face should override the words.
+3. Record a small labelled webcam set, including sarcasm, to tune the live weights on real webcam data instead of MELD.
 4. Run several seeds, and train a learned fusion on out-of-fold predictions.
 5. Add automatic barge-in with echo cancellation, and an end-of-turn decision that uses the words as well as the silence.
 

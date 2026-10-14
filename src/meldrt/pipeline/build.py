@@ -22,15 +22,24 @@ def build_pipeline(sample_rate):
     # alpha was chosen on dev by train/tune_fusion.py
     with open(Path(cfg["fusion"]["run_dir"]) / "alpha.json", encoding="utf-8") as f:
         alpha = json.load(f)["alpha"]
-    weights3 = None
-    if cfg["pipeline"]["use_vision"]:
-        # the three-model weights were chosen on dev by train/tune_fusion3.py
-        with open(Path(cfg["fusion"]["run_dir"]) / "weights3.json", encoding="utf-8") as f:
-            weights3 = json.load(f)["weights"]
     # the temperature was fitted on dev by train/calibrate.py
     with open(Path(cfg["fusion"]["run_dir"]) / "calibration.json", encoding="utf-8") as f:
         temperature = json.load(f)["temperature"]
-    return Pipeline(vad, asr, classifier, cfg, alpha, sample_rate, weights3, temperature)
+    weights3, temperature3 = None, temperature
+    if cfg["pipeline"]["use_vision"]:
+        weights3, temperature3 = live_fusion(cfg, temperature)
+    return Pipeline(vad, asr, classifier, cfg, alpha, sample_rate, weights3, temperature, temperature3)
+
+
+def live_fusion(cfg, temperature):
+    """The (words, voice, face) weights and temperature for live turns that have a face."""
+    f = cfg["fusion"]
+    if f["live_weights"] is not None:
+        # my choice for live use: the face gets a real say (dev scores of this mix in DECISIONS.md)
+        return list(f["live_weights"]), f["live_temperature"]
+    # the weights chosen on dev by train/tune_fusion3.py, the ones scored on test
+    with open(Path(f["run_dir"]) / "weights3.json", encoding="utf-8") as fh:
+        return json.load(fh)["weights"], temperature
 
 
 def build_speaker(play=True):

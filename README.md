@@ -9,7 +9,11 @@
 ![Parameters](https://img.shields.io/badge/parameters-2.18B%20of%206B-1F3A5F)
 ![Track](https://img.shields.io/badge/track-text%20%2B%20audio%20%2B%20vision-1F3A5F)
 
-[**Report**](REPORT.docx) · [Decision log](DECISIONS.md) · [Quick start](#quick-start)
+<a href="#demo-video"><img src="https://img.shields.io/badge/Watch%20the%20demo-video-B03A2E?style=for-the-badge" alt="Watch the demo video" height="38"></a>
+&nbsp;
+<a href="REPORT.docx"><img src="https://img.shields.io/badge/Read%20the%20report-Word%20document-1F3A5F?style=for-the-badge" alt="Read the report" height="38"></a>
+
+[Decision log](DECISIONS.md) · [Quick start](#quick-start)
 
 <img src="docs/figures/page.png" alt="The web page playing a MELD clip" width="900">
 
@@ -18,6 +22,22 @@
 | emotion ready after you stop | robot starts speaking | weighted F1 on MELD test | parameters, all local |
 
 </div>
+
+## Demo video
+
+<!-- Paste the video here. On GitHub: edit this file, drag the .mp4 onto this line, and GitHub inserts a player link.
+     Or replace VIDEO_LINK below with a YouTube or Google Drive link. -->
+
+**[Watch the demo (about 4 minutes)](VIDEO_LINK)**
+
+The full write-up (decisions, results, problems, limitations, next steps) is in the **[report (Word)](REPORT.docx)**, with the same text in [REPORT.md](REPORT.md).
+
+What it shows:
+- **Live mode:** talking to the robot with the webcam on, while each model's view, the fused emotion, and the timings update.
+- **Three inputs together:** a happy sentence said with an angry voice and face, and the robot noticing.
+- **Interrupting:** talking over the robot to cut it off.
+- **Sample clips:** real MELD clips through the same models, with the true label shown next to what the robot said.
+- **One input to both outputs:** the replay script printing the structured state and the spoken reply.
 
 ## How it works
 

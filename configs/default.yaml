@@ -68,6 +68,9 @@ fusion:
   alpha_step: 0.05                   # grid for the weight on text, tuned on dev
   conflict_min_conf: 0.5             # both models must be at least this sure for a tone/text conflict
   run_dir: runs/fusion
+  live_weights: [0.25, 0.30, 0.45]   # words, voice, face for live turns with a face. null uses the dev-best
+                                     # weights in runs/fusion/weights3.json (0.45, 0.55, 0.00). See DECISIONS.md
+  live_temperature: 0.50             # fitted on dev for live_weights, so their confidence stays calibrated
 
 release:                             # where scripts/fetch_models.py finds the trained models and the sample clips
   repo: paramveer30/HCL-ML-Challenge

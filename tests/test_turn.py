@@ -366,6 +366,18 @@ def test_push_image_hands_back_what_it_saw():
     assert pipeline.push_image(NO_FACE) is None
 
 
+def test_a_turn_with_a_face_uses_its_own_temperature():
+    def turn(temperature3):
+        classifier = FakeClassifier(JOY, ANGER)
+        classifier.p_vision = SADNESS
+        pipeline = Pipeline(FakeVad(ONE_TURN), FakeAsr(["hello"]), classifier, CFG, alpha=0.5, sample_rate=16000,
+                            weights3=(0.5, 0.25, 0.25), temperature=1.0, temperature3=temperature3)
+        pipeline.push_image(FACE)
+        return run(pipeline, len(ONE_TURN))[-1]
+    plain, sharper = turn(1.0), turn(0.5)
+    assert sharper.label == plain.label and sharper.confidence > plain.confidence
+
+
 def test_the_temperature_changes_the_confidence_but_not_the_label():
     plain, _, _ = make(ONE_TURN, ["hello"])
     sharp = Pipeline(FakeVad(ONE_TURN), FakeAsr(["hello"]), FakeClassifier(JOY, ANGER), CFG, alpha=0.5,

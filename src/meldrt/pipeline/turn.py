@@ -27,12 +27,13 @@ def view_of(probs):
 
 
 class Pipeline:
-    def __init__(self, vad, asr, classifier, cfg, alpha, sample_rate, weights3=None, temperature=1.0):
+    def __init__(self, vad, asr, classifier, cfg, alpha, sample_rate, weights3=None, temperature=1.0, temperature3=None):
         p = cfg["pipeline"]
         if sample_rate != cfg["audio"]["sample_rate"]:
             raise ValueError(f"expected {cfg['audio']['sample_rate']} Hz audio, got {sample_rate}")
         self.vad, self.asr, self.classifier, self.alpha = vad, asr, classifier, alpha
         self.temperature = temperature      # makes the fused confidence match how often it is right (train/calibrate.py)
+        self.temperature3 = temperature if temperature3 is None else temperature3     # the same, for turns with a face
         self.sample_rate = sample_rate
         self.frame_samples = p["frame_samples"]
         self.frame_ms = 1000 * self.frame_samples / sample_rate
@@ -136,18 +137,20 @@ class Pipeline:
             audio_view = view_of(p_audio)
             conflict = tone_text_conflict(p_text, p_audio, self.min_conf)
         vision_view, face_conflict = None, False
+        temperature = self.temperature
         if p_vision is not None:
+            temperature = self.temperature3
             # with a face all three are blended; a turn too short for the audio model uses text in its place
             w_text, w_audio, w_vision = self.weights3
             fused = w_text * p_text + w_audio * (p_text if p_audio is None else p_audio) + w_vision * p_vision
             vision_view = view_of(p_vision)
             face_conflict = tone_text_conflict(p_text, p_vision, self.min_conf)
             if p_audio is not None and two_against_words(p_text, p_audio, p_vision):
-                # voice and face agree with each other and not with the words. The fused label still follows
-                # the weights chosen on dev, but the mismatch is flagged even if neither of the two is very sure
+                # voice and face agree with each other and not with the words: the mismatch is flagged
+                # even if neither of the two is very sure
                 conflict = face_conflict = True
 
-        fused = sharpen(fused, self.temperature)
+        fused = sharpen(fused, temperature)
 
         self.turn_id += 1
         state = TurnState(
