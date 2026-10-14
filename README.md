@@ -21,16 +21,9 @@
 
 ## How it works
 
-<p align="center"><img src="docs/figures/how_it_works.png" alt="Listen, understand, fuse, respond" width="900"></p>
+<p align="center"><img src="docs/figures/system.png" alt="One turn through the system" width="820"></p>
 
 When the voice or the face contradicts the words (a happy sentence said angrily), the robot notices and checks in instead of guessing.
-
-<details>
-<summary>Detailed architecture</summary>
-<br>
-<p align="center"><img src="docs/figures/system.png" alt="One turn through the system" width="760"></p>
-
-</details>
 
 <details>
 <summary>Example output for one turn</summary>
@@ -176,7 +169,5 @@ tests/                 206 CPU tests, no data needed
 <div align="center">
 
 Built by **Paramveer Multani** · [paramveermultani.com](https://www.paramveermultani.com) · [LinkedIn](https://www.linkedin.com/in/paramveermt) · multap1@mcmaster.ca
-
-<sub>Icons in the diagram: <a href="https://fontawesome.com">Font Awesome Free</a>, CC BY 4.0</sub>
 
 </div>
