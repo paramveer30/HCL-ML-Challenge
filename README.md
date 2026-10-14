@@ -1,40 +1,38 @@
-<div align="center">
+<p align="center"><img src="docs/figures/banner.png" alt="ML Challenge, Human Computer Lab: a companion robot that hears what you say, how you say it, and the look on your face. By Paramveer Multani." width="900"></p>
 
-# Human Computer Lab ML Challenge
+<p align="center">
+<a href="docs/demo.mp4"><img src="docs/figures/thumb_demo.png" alt="Watch the demo video (5:28)" width="400"></a>
+&nbsp;&nbsp;
+<a href="Paramveer_Multani_HCL_ML.docx"><img src="docs/figures/thumb_report.png" alt="Read the report (Word)" width="400"></a>
+</p>
 
-**A companion robot that hears what you say, how you say it, and the look on your face,<br>and answers out loud in under a second.**
+<p align="center">
+<img src="https://img.shields.io/badge/python-3.11-000000?style=flat-square">
+<img src="https://img.shields.io/badge/runs-100%25%20locally-000000?style=flat-square">
+<img src="https://img.shields.io/badge/parameters-2.18B%20of%206B-000000?style=flat-square">
+<img src="https://img.shields.io/badge/track-text%20%2B%20audio%20%2B%20vision-000000?style=flat-square">
+</p>
 
-![Python 3.11](https://img.shields.io/badge/python-3.11-1F3A5F)
-![Runs locally](https://img.shields.io/badge/runs-100%25%20locally-1F3A5F)
-![Parameters](https://img.shields.io/badge/parameters-2.18B%20of%206B-1F3A5F)
-![Track](https://img.shields.io/badge/track-text%20%2B%20audio%20%2B%20vision-1F3A5F)
-
-<a href="#demo-video"><img src="https://img.shields.io/badge/Watch%20the%20demo-video-B03A2E?style=for-the-badge" alt="Watch the demo video" height="38"></a>
-&nbsp;
-<a href="REPORT.docx"><img src="https://img.shields.io/badge/Read%20the%20report-Word%20document-1F3A5F?style=for-the-badge" alt="Read the report" height="38"></a>
-
-[Decision log](DECISIONS.md) · [Quick start](#quick-start)
-
-<img src="docs/figures/page.png" alt="The web page playing a MELD clip" width="900">
-
-| **0.28 s** | **0.58 s** | **0.638** | **2.18 B** |
-| :---: | :---: | :---: | :---: |
-| emotion ready after you stop | robot starts speaking | weighted F1 on MELD test | parameters, all local |
-
-</div>
+```text
+> emotion ready      0.28 s after you stop talking
+> robot speaks       0.58 s after you stop talking
+> MELD test F1       0.638 weighted (text), vs 0.313 always-neutral
+> parameters         2.18 B of the 6 B cap, all running locally
+```
 
 ## Demo video
 
-**[Watch the demo (5.5 minutes)](docs/demo.mp4)**: the video is in the repository at `docs/demo.mp4` (10 MB). On the file's page, click **View raw** to play or download it.
+Click the thumbnail above, or open [`docs/demo.mp4`](docs/demo.mp4) (5.5 minutes, 10 MB) and press **View raw** to play it. It shows:
 
-The full write-up (decisions, results, problems, limitations, next steps) is in the **[report (Word)](REPORT.docx)**, with the same text in [REPORT.md](REPORT.md).
-
-What it shows:
 - **Live mode:** talking to the robot with the webcam on, while each model's view, the fused emotion, and the timings update.
 - **Three inputs together:** a happy sentence said with an angry voice and face, and the robot noticing.
 - **Interrupting:** talking over the robot to cut it off.
 - **Sample clips:** real MELD clips through the same models, with the true label shown next to what the robot said.
 - **One input to both outputs:** the replay script printing the structured state and the spoken reply.
+
+## Report
+
+The full write-up is in [`Paramveer_Multani_HCL_ML.docx`](Paramveer_Multani_HCL_ML.docx) (same text in [`REPORT.md`](REPORT.md)): the problem, what real-time means here, the system, data, results, decisions and trade-offs, problems I ran into, limitations, and next steps. Every decision and measurement, in order, is in [`DECISIONS.md`](DECISIONS.md).
 
 ## How it works
 
@@ -66,7 +64,7 @@ When the voice or the face contradicts the words (a happy sentence said angrily)
 - The voice and the face earn their place live: they catch a happy sentence said angrily.
 - The test split was scored once, by one script, after every choice was made on dev.
 
-Latency, memory, limitations, and next steps are in the [report](REPORT.docx).
+Latency, memory, limitations, and next steps are in the [report](Paramveer_Multani_HCL_ML.docx).
 
 ## Quick start
 
