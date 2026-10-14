@@ -1,6 +1,7 @@
-"""The only script that reads the test split. Scores majority, text only, audio only, and fused.
+"""The only script that reads the test split. Scores majority, text only, audio only, and fused,
+and, once the vision head is trained, vision only, text + vision, and all three together.
 
-Everything it uses was fixed on dev beforehand: both checkpoints and alpha.
+Everything it uses was fixed on dev beforehand: the checkpoints, alpha, and the three-model weights.
 Run with --split dev to check the script itself without touching test.
 """
 import argparse
@@ -14,7 +15,7 @@ from transformers import AutoModelForSequenceClassification, AutoTokenizer
 from meldrt.config import load_config
 from meldrt.data.features import load_features
 from meldrt.data.meld import load_split
-from meldrt.eval.ablation import ablation_predictions
+from meldrt.eval.ablation import ablation_predictions, vision_predictions
 from meldrt.eval.metrics import confusion, f1_summary, per_class_f1
 from meldrt.labels import LABEL2ID, LABELS
 from meldrt.models.audio import AudioHead
@@ -59,7 +60,26 @@ def main():
 
     rows = ablation_predictions(p_text, p_audio, has_audio, alpha, majority_class)
 
+    # the vision extension: the same kind of head on cached face features
+    v = cfg["vision_head"]
+    weights_file = Path(cfg["fusion"]["run_dir"]) / "weights3.json"
+    has_vision_model = Path(v["checkpoint"]).exists() and weights_file.exists()
+    has_face = np.zeros(len(df), dtype=bool)
+    if has_vision_model:
+        face_feats, has_face = load_features(df, args.split, cfg, cfg["vision"]["feature_root"])
+        vision_head = AudioHead(hidden=v["hidden"], dropout=v["dropout"]).to(device)
+        vision_head.load_state_dict(torch.load(v["checkpoint"], map_location=device))
+        p_vision = np.full((len(df), len(LABELS)), np.nan, dtype=np.float32)
+        p_vision[has_face] = softmax(predict(vision_head, torch.from_numpy(face_feats).to(device)))
+        with open(weights_file, encoding="utf-8") as f:
+            three = json.load(f)
+        rows.update(vision_predictions(p_text, p_audio, has_audio, p_vision, has_face, alpha,
+                                       three["alpha_text_vision"], three["weights"], majority_class))
+
     print(f"\nsplit: {args.split}   rows: {len(df)}   rows with audio: {int(has_audio.sum())}   alpha: {alpha}")
+    if has_vision_model:
+        print(f"rows with a face: {int(has_face.sum())}   weight on text for text + vision: {three['alpha_text_vision']}"
+              f"   weights (text, audio, vision): {three['weights']}")
     print(f"majority class (from train): {LABELS[majority_class]}\n")
     print("| Model | Weighted F1 | Macro F1 |")
     print("| --- | --- | --- |")
@@ -76,6 +96,13 @@ def main():
         f1s = [results[name]["per_class"][label] for name in ["text only", "audio only", "fused"]]
         print(f"| {label} | {counts[i]} | {f1s[0]:.3f} | {f1s[1]:.3f} | {f1s[2]:.3f} |")
 
+    if has_vision_model:
+        print("\n| Emotion | n | Vision only | Text + vision | Text + audio + vision |")
+        print("| --- | --- | --- | --- | --- |")
+        for i, label in enumerate(LABELS):
+            f1s = [results[name]["per_class"][label] for name in ["vision only", "text + vision", "text + audio + vision"]]
+            print(f"| {label} | {counts[i]} | {f1s[0]:.3f} | {f1s[1]:.3f} | {f1s[2]:.3f} |")
+
     matrix = confusion(y, rows["fused"])
     print("\nconfusion matrix for fused (rows: true, columns: predicted)")
     print(" " * 10 + " ".join(f"{label[:7]:>8s}" for label in LABELS))
@@ -88,6 +115,7 @@ def main():
         "split": args.split,
         "rows": len(df),
         "rows_with_audio": int(has_audio.sum()),
+        "rows_with_a_face": int(has_face.sum()),
         "alpha": alpha,
         "results": results,
         "fused_confusion": matrix.tolist(),

@@ -33,6 +33,35 @@ def tune_alpha(p_text, p_audio, y_true, step=0.05):
     return best_alpha, best_f1
 
 
+def fuse_three(p_text, p_audio, p_vision, has_face, weights, alpha):
+    """Blend three probability arrays, shape (n, 7). weights: (text, audio, vision), summing to 1.
+
+    Rows with no face get the two-model blend with alpha instead, so without a camera
+    the result is exactly the text + audio system.
+    """
+    w_text, w_audio, w_vision = weights
+    three = w_text * p_text + w_audio * p_audio + w_vision * np.nan_to_num(p_vision)
+    return np.where(has_face[:, None], three, late_fuse(p_text, p_audio, alpha))
+
+
+def tune_three(p_text, p_audio, p_vision, has_face, alpha, y_true, step=0.05):
+    """Try every (text, audio, vision) weight triple on a grid that sums to 1.
+
+    Returns (best_weights, best_weighted_f1, grid). On a tie the triple with the smaller vision weight wins,
+    then the smaller text weight: the search starts from vision 0.
+    """
+    n = round(1 / step)
+    best_weights, best_f1, grid = None, -1.0, []
+    for v in range(n + 1):
+        for t in range(n + 1 - v):
+            weights = (round(t * step, 6), round((n - v - t) * step, 6), round(v * step, 6))
+            scores = f1_summary(y_true, fuse_three(p_text, p_audio, p_vision, has_face, weights, alpha).argmax(axis=1))
+            grid.append({"weights": list(weights), **scores})
+            if scores["weighted_f1"] > best_f1:
+                best_weights, best_f1 = weights, scores["weighted_f1"]
+    return best_weights, best_f1, grid
+
+
 def tone_text_conflict(p_text, p_audio, min_conf=0.4):
     """For one line, shape (7,): True when the top labels differ and both top probabilities are >= min_conf."""
     labels_differ = p_text.argmax() != p_audio.argmax()

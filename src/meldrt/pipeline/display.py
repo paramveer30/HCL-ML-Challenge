@@ -9,7 +9,11 @@ def show_state(state, as_json=False):
     views = f"words: {state.text_view.label} {state.text_view.confidence:.0%}"
     if state.audio_view is not None:
         views += f", voice: {state.audio_view.label} {state.audio_view.confidence:.0%}"
+    if state.vision_view is not None:
+        views += f", face: {state.vision_view.label} {state.vision_view.confidence:.0%}"
     flag = "   << words and voice disagree" if state.tone_text_conflict else ""
+    if state.face_text_conflict:
+        flag += "   << words and face disagree"
     print(f"\nYou:    {state.transcript}")
     print(f"Feels:  {state.label} {state.confidence:.0%}  ({views}){flag}")
 

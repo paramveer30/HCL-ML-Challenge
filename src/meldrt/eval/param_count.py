@@ -92,3 +92,59 @@ def count_gguf(path):
             read(f, "I")                              # data type
             read(f, "Q")                              # offset of the data
     return total
+
+
+def read_varint(data, i):
+    """One protobuf variable-length integer starting at byte i. Returns (value, next position)."""
+    value = shift = 0
+    while True:
+        byte = data[i]
+        i += 1
+        value |= (byte & 0x7F) << shift
+        shift += 7
+        if byte < 0x80:
+            return value, i
+
+
+def protobuf_fields(data):
+    """Yields (field number, wire type, value) for every field of one protobuf message."""
+    i = 0
+    while i < len(data):
+        key, i = read_varint(data, i)
+        number, wire = key >> 3, key & 7
+        if wire == 0:
+            value, i = read_varint(data, i)
+        elif wire == 2:                               # length-delimited: bytes, a string, or a nested message
+            length, i = read_varint(data, i)
+            value, i = data[i : i + length], i + length
+        else:                                         # fixed 8 bytes (wire type 1) or 4 bytes (wire type 5)
+            length = 8 if wire == 1 else 4
+            value, i = data[i : i + length], i + length
+        yield number, wire, value
+
+
+def count_onnx(path):
+    """Tensor elements stored in an ONNX file, the format the face detector comes in.
+
+    Layout: the model's field 7 is the graph, the graph's field 5 is one stored tensor (repeated),
+    and a tensor's field 1 is its shape. Shape constants are stored the same way, so this counts
+    slightly more than the learned weights, never less.
+    """
+    with open(path, "rb") as f:
+        model = f.read()
+    graph = next(value for number, _, value in protobuf_fields(model) if number == 7)
+    total = 0
+    for number, _, tensor in protobuf_fields(graph):
+        if number != 5:
+            continue
+        size = 1
+        for field, wire, value in protobuf_fields(tensor):
+            if field == 1 and wire == 0:              # one dimension per field
+                size *= value
+            elif field == 1:                          # all dimensions packed into one field
+                i = 0
+                while i < len(value):
+                    dim, i = read_varint(value, i)
+                    size *= dim
+        total += size
+    return total

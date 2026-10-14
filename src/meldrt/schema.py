@@ -22,12 +22,17 @@ class TurnState:
     tone_text_conflict: bool
     audio_seconds: float
     latency_ms: dict = field(default_factory=dict)
+    vision_view: View | None = None    # None when no face was seen during the turn
+    face_text_conflict: bool = False
+    faces_seen: int = 0                # camera or video frames with a face during the turn
 
     def to_event(self):
         """The state as a JSON-ready dict."""
         views = {"text": {"label": self.text_view.label, "confidence": round(self.text_view.confidence, 3)}}
         if self.audio_view is not None:
             views["audio"] = {"label": self.audio_view.label, "confidence": round(self.audio_view.confidence, 3)}
+        if self.vision_view is not None:
+            views["vision"] = {"label": self.vision_view.label, "confidence": round(self.vision_view.confidence, 3)}
         return {
             "type": "state",
             "turn_id": self.turn_id,
@@ -39,6 +44,8 @@ class TurnState:
             },
             "views": views,
             "tone_text_conflict": self.tone_text_conflict,
+            "face_text_conflict": self.face_text_conflict,
+            "faces_seen": self.faces_seen,
             "audio_seconds": round(self.audio_seconds, 2),
             "latency_ms": {name: round(ms) for name, ms in self.latency_ms.items()},
         }

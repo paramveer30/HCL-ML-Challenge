@@ -15,7 +15,7 @@ from pathlib import Path
 from faster_whisper.utils import download_model
 
 from meldrt.config import load_config
-from meldrt.eval.param_count import count_ct2, count_gguf, count_spacy, count_torch
+from meldrt.eval.param_count import count_ct2, count_gguf, count_onnx, count_spacy, count_torch
 from meldrt.pipeline.build import build_pipeline, build_speaker
 
 
@@ -47,6 +47,12 @@ def main():
         ("Kokoro voice embedding", sum(v.numel() for v in speaker.tts.voices.values()), "loaded tensor"),
         ("spaCy model in Kokoro's text front end", count_spacy(speaker.tts.g2p.nlp), "loaded model"),
     ]
+    if cfg["pipeline"]["use_vision"]:
+        rows += [
+            ("YuNet face detector", count_onnx(cfg["vision"]["detector_file"]), "ONNX file"),
+            ("ViT face expression encoder", count_torch(classifier.vit), "loaded model"),
+            ("Vision head", count_torch(classifier.vision_head), "loaded model"),
+        ]
     total = sum(count for _, count, _ in rows)
     cap = cfg["eval"]["max_params"]
 

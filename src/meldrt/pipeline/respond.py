@@ -16,12 +16,18 @@ RULES = (
 def state_note(state, low_conf):
     """One line telling the chat model what we think the person feels, and what to do about it."""
     # unsure, or words and voice point different ways: ask, don't assume
-    if state.tone_text_conflict:
-        words, voice = state.text_view.label, state.audio_view.label
+    if state.tone_text_conflict or state.face_text_conflict:
+        # name each thing that disagrees with the words: the voice, the face, or both
+        heard, seen = [], []
+        if state.tone_text_conflict:
+            heard, seen = [f"your voice sounds {state.audio_view.label}"], [f"sound {state.audio_view.label}"]
+        if state.face_text_conflict:
+            heard.append(f"your face looks {state.vision_view.label}")
+            seen.append(f"look {state.vision_view.label}")
         return (
-            f"Private note: your words sound {words}, but your voice sounds {voice}. "
-            "Robot: do not assume which is true. Tell them kindly that they sound "
-            f"{voice} even though their words say otherwise, then ask one short question."
+            f"Private note: your words sound {state.text_view.label}, but {' and '.join(heard)}. "
+            "Robot: do not assume which is true. Tell them kindly that they "
+            f"{' and '.join(seen)} even though their words say otherwise, then ask one short question."
         )
     if state.confidence < low_conf:
         return (

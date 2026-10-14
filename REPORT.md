@@ -34,6 +34,8 @@ mic or WAV  --32 ms frames-->  voice detector + endpointer
                     v                                    |
             RoBERTa text model                           |
                     +------------> late fusion <---------+
+                                       ^
+camera or video  --pictures-->  face detector  --largest face-->  ViT + vision head
                                        |
                                  state (JSON)
                                        |
@@ -59,9 +61,12 @@ Parameters on the local inference path (`scripts/count_params.py`; counted from 
 | Kokoro-82M | speech output | 81,810,022 |
 | Kokoro voice embedding | speech output | 130,560 |
 | spaCy `en_core_web_sm` | Kokoro's text front end | 1,570,514 |
-| **Total** | | **2,088,681,413** |
+| YuNet face detector | finds faces in a picture | 53,121 |
+| ViT-base face expression encoder | face features, frozen | 85,798,656 |
+| Vision head | face emotion, trained by us | 198,676 |
+| **Total** | | **2,174,731,866** |
 
-The cap is 6,000,000,000, so the system uses 34.8% of it. Quantization changes how each number is stored, not how many there are, so the reply model counts at full size.
+The cap is 6,000,000,000, so the system uses 36.2% of it. Quantization changes how each number is stored, not how many there are, so the reply model counts at full size.
 
 ## 4. Data
 
@@ -73,6 +78,8 @@ MELD raw release: 9,989 / 1,109 / 2,610 utterances in train / dev / test, in 1,0
 | Extracted WAVs | 9,988 | 1,112 | 2,615 |
 | Clips under 0.3 s (no audio features) | 164 | 20 | 54 |
 | Utterances with no audio features | 165 | 21 | 53 |
+| Clips where no face was found in 8 frames | 61 | 9 | 18 |
+| Utterances with no face features | 61 | 10 | 18 |
 
 Neutral is 47.2% of train; fear and disgust are 268 and 271 utterances.
 
@@ -118,6 +125,41 @@ fear            23    3         5      5        6        0     8
 
 The audio head's learned layer weights peak at WavLM layers 8 to 10 (0.150, 0.182, 0.121; equal weights would be 0.077).
 
+### Vision extension
+
+Added on Oct 13 after the core track was finished. For every clip, 8 evenly spaced frames; in each, the largest face found by a small detector (YuNet), cropped with a 25% margin; a frozen ViT trained for facial expressions turns the faces into features (the [CLS] token of all 13 layers, averaged over the faces); the same head design as audio is trained on them. A face was found in 99.4% / 99.2% / 99.3% of train / dev / test clips.
+
+The test split was read a second time for these rows, with the vision head, the text + vision weight, and the three-model weights all fixed on dev first. The four rows of the first table came out identical in that run.
+
+| Model | Dev weighted F1 | Dev macro F1 | Test weighted F1 | Test macro F1 |
+| --- | ---: | ---: | ---: | ---: |
+| Vision only | 0.3450 | 0.2073 | 0.3557 | 0.1853 |
+| Text + vision (weight on text 0.45) | 0.6273 | 0.4795 | 0.6283 | 0.4496 |
+| Text + audio + vision (weights 0.45 / 0.55 / 0.00) | 0.6346 | 0.4951 | 0.6369 | 0.4588 |
+
+For utterances with no face, "vision only" predicts neutral, "text + vision" uses text alone, and the three-model row is the two-model fusion.
+
+Per-class F1 on test:
+
+| Emotion | n | Vision only | Text + vision | Text + audio + vision |
+| --- | ---: | ---: | ---: | ---: |
+| neutral | 1256 | 0.561 | 0.790 | 0.793 |
+| joy | 402 | 0.294 | 0.611 | 0.605 |
+| surprise | 281 | 0.066 | 0.576 | 0.591 |
+| anger | 345 | 0.173 | 0.411 | 0.443 |
+| sadness | 208 | 0.101 | 0.364 | 0.395 |
+| disgust | 68 | 0.022 | 0.140 | 0.182 |
+| fear | 50 | 0.078 | 0.255 | 0.203 |
+
+What was measured on dev before choosing:
+- The three-model weights were searched on a grid of 0.05 (231 triples). The best triple gives vision 0, which is the two-model fusion (0.6346). The best triple with any vision in it scores 0.6332 (0.50 / 0.20 / 0.30). The curve over the vision weight is flat between 0.629 and 0.635, so on MELD the face neither helps nor hurts once text and audio are there.
+- Text + vision gains 0.012 over text alone on dev and loses 0.010 on test.
+- The ViT's own expression classifier, with no MELD training, scores 0.257 / 0.171 on dev. The head trained on MELD scores 0.348 / 0.208 on the same rows, so the training is worth 0.09.
+- Seven variants of the head (input normalization, learning rate, dropout, last layer only; two seeds each) all landed between 0.344 and 0.361, so the head is not what limits it.
+- When the face model is at least 50% sure and disagrees with a text model that is also at least 50% sure (2.1% of dev rows), the words are right 48% of the time and the face 22%.
+
+> TODO (Param): 1 paragraph in your own words on why vision is weak on MELD (several faces, the largest is not always the speaker, the label is for the utterance and not the facial expression, TV lighting and cuts) and what it is still used for live (a third view in the state, the check-in when face and words disagree).
+
 Checked afterwards on dev only (nothing was retrained for the results above): class weights $1/\sqrt{n_c}$ against no weights and full inverse frequency.
 
 | Class weights | Text, dev weighted / macro F1 | Audio head, dev weighted / macro F1 (3 seeds) |
@@ -144,7 +186,9 @@ Resampling the dev rows 2,000 times, the fusion gain over text (+0.020) has a 95
 | Full reply | 450 | 745 |
 | First spoken sound ready | 542 | 780 |
 
-The state met its 600 ms target on 98% of turns, the first reply token on 98%, the full reply on 100%, and the first sound on 98%. One turn of the 50 took about 2.6 s to reach the state.
+With the face model on and each clip's video fed in next to its audio (the configuration that ships), the same 50 clips gave: speech recognition 228 / 415, audio branch 26 / 37, vision head 1 / 1, **state 269 / 462**, first reply token 356 / 529, full reply 478 / 734, first sound 578 / 784. One video picture costs 70 / 89 ms (face detection on the CPU plus the ViT on the GPU), paid while the person is still speaking and not after the turn ends; 49 of the 50 turns had a face. State within 600 ms on 100% of turns.
+
+Without vision, the state met its 600 ms target on 98% of turns, the first reply token on 98%, the full reply on 100%, and the first sound on 98%. One turn of the 50 took about 2.6 s to reach the state.
 
 The same benchmark before and after three changes made on Oct 13 (p50 / p95, same 50 clips, same prompt):
 
@@ -161,11 +205,11 @@ The three changes, each measured on its own first (`DECISIONS.md`): (1) Whisper 
 
 | Resource | Observed |
 | --- | ---: |
-| GPU memory before loading anything (other programs) | 1,137 MiB |
-| GPU memory at peak, everything loaded | 4,508 MiB of 6,144 |
-| GPU memory used by the system | 3,371 MiB |
-| of which held by PyTorch (RoBERTa, WavLM, head, Kokoro) | 1,556 MiB |
-| RAM at peak (our process plus Ollama) | 2,253 MiB |
+| GPU memory before loading anything (other programs) | 1,819 MiB |
+| GPU memory at peak, everything loaded, vision included | 5,446 MiB of 6,144 |
+| GPU memory used by the system | 3,627 MiB (3,371 without the face model) |
+| of which held by PyTorch (RoBERTa, WavLM, ViT, heads, Kokoro) | 1,887 MiB |
+| RAM at peak (our process plus Ollama) | 2,350 MiB |
 | Model load time, already downloaded | about 4 s, plus the reply model |
 
 A browser was open during the run. An earlier version of the benchmark read the memory counters twice a second from a second thread, which slowed the pipeline itself: the state p50 was 1,147 ms. Memory is now read between turns only.
@@ -181,7 +225,7 @@ A browser was open during the run. An earlier version of the benchmark read the 
 | RAM | 16 GB |
 | OS | Windows 11 Pro |
 
-Training: the text model took 503 s for 3 epochs; the audio head 25 s for 30 epochs; caching WavLM features for all 13,477 clips about 9 minutes; extracting audio about 10 minutes.
+Training: the text model took 503 s for 3 epochs; the audio head 25 s for 30 epochs; caching WavLM features for all 13,477 clips about 9 minutes; extracting audio about 10 minutes; caching face features for all 13,716 clips about 25 minutes (face detection in 6 CPU processes, the ViT on the GPU); the vision head 25 s.
 
 PyTorch models run in fp32: the GTX 1660 series has a known half-precision problem. Whisper runs with 8-bit weights and 32-bit arithmetic (`int8_float32`) inside CTranslate2 and the reply model as 4-bit GGUF inside Ollama.
 
@@ -199,14 +243,15 @@ PyTorch models run in fp32: the GTX 1660 series has a known half-precision probl
 > - MELD is acted TV audio with laugh tracks; several clips contain more or less speech than their transcript.
 > - Pauses over 600 ms split one sentence into two turns: 11.5% of 400 dev clips came out as two or more turns, and 10.8% were not detected as a turn at all. A shorter wait would answer sooner but cut more: 14.2% at 500 ms, 18.0% at 400 ms. So the wait stayed at 600 ms.
 > - No barge-in: the microphone is ignored while the robot speaks.
+> - Vision: the face model is weak on MELD (0.356 weighted F1 on test, most predictions neutral, fear and disgust near zero) and gets no weight in the fused label. There is no active-speaker detection: the largest face is taken, and it is not always the speaker. The head was trained on TV frames, not on a webcam, and the live camera path was not scored. In the web page the camera sends pictures only while the talk button is held.
 > - The reply model is small and does not always follow the prompt; reply quality is not scored.
 > - About 2% of utterances have no audio prediction (clips under 0.3 s).
 
 ## 10. Completed and intentionally left out
 
-Completed: text emotion model with dialogue context; audio emotion model on frozen WavLM features; late fusion with an ablation on test; a streaming turn pipeline (voice detection, endpointing, speech recognition, classification, state, streamed reply, spoken reply); replay and live scripts; a local web page that shows a turn as it happens; latency, memory, and parameter measurements; a check on dev of the weighting choices and of the accuracy lost in the live path.
+Completed: text emotion model with dialogue context; audio emotion model on frozen WavLM features; late fusion with an ablation on test; a streaming turn pipeline (voice detection, endpointing, speech recognition, classification, state, streamed reply, spoken reply); replay and live scripts; a local web page that shows a turn as it happens; latency, memory, and parameter measurements; a check on dev of the weighting choices and of the accuracy lost in the live path; the three-modality extension (a vision emotion model, three-model fusion scored on test, and a live camera in the web page).
 
-Left out on purpose: the vision track and the three-modality extension; reinforcement learning; barge-in; a stacked fusion model; multiple seeds; an ablation of the dialogue context on the full dev set; rating of reply quality; an emotion-matched voice.
+Left out on purpose: active-speaker detection for the vision branch; reinforcement learning; barge-in; a stacked fusion model; multiple seeds; an ablation of the dialogue context on the full dev set; rating of reply quality; an emotion-matched voice.
 
 ## 11. External components
 
@@ -219,6 +264,8 @@ Left out on purpose: the vision track and the three-modality extension; reinforc
 | Whisper small.en through faster-whisper | speech recognition | MIT |
 | Qwen2.5-1.5B-Instruct through Ollama | reply generation | Apache 2.0 |
 | Kokoro-82M | speech output | Apache 2.0 |
+| `trpakov/vit-face-expression` (ViT-base trained on FER2013) | face features | Apache 2.0 |
+| YuNet face detector (OpenCV Zoo) through OpenCV | finding faces | MIT (model), Apache 2.0 (OpenCV) |
 | PyTorch, Hugging Face transformers, scikit-learn, pandas, NumPy | training and evaluation | BSD / Apache 2.0 |
 
 Versions are pinned in `requirements.txt`.

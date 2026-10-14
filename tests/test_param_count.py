@@ -63,3 +63,20 @@ def test_count_gguf_rejects_other_files(tmp_path):
     path.write_bytes(b"nope" + b"\0" * 32)
     with pytest.raises(ValueError):
         count_gguf(path)
+
+
+def pb(field, payload):
+    """One length-delimited protobuf field."""
+    return bytes([(field << 3) | 2, len(payload)]) + payload
+
+
+def test_count_onnx_multiplies_the_shape_of_every_stored_tensor(tmp_path):
+    from meldrt.eval.param_count import count_onnx
+
+    weight = bytes([0x08, 4, 0x08, 5]) + pb(8, b"weight")       # two dimension fields: 4 and 5
+    bias = pb(1, bytes([5])) + pb(8, b"bias")                    # the same field, packed: 5
+    wide = bytes([0x08, 0xAC, 0x02])                             # one dimension of 300, a two-byte number
+    graph = pb(1, b"a node") + pb(5, weight) + pb(5, bias) + pb(5, wide)
+    path = tmp_path / "model.onnx"
+    path.write_bytes(bytes([0x08, 8]) + pb(7, graph))            # field 1 is the format version, field 7 the graph
+    assert count_onnx(path) == 4 * 5 + 5 + 300

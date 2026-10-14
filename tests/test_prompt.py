@@ -75,3 +75,30 @@ def test_confidence_at_the_threshold_is_not_low():
 def test_works_when_there_is_no_audio_view():
     last = build_prompt(make_state(audio=None), [])[-1]
     assert last["content"].startswith("I got the job!")
+
+
+def with_face(state, label, conflict):
+    state.vision_view = View(label, 0.7)
+    state.face_text_conflict = conflict
+    return state
+
+
+def test_a_face_that_disagrees_with_the_words_is_named():
+    state = with_face(make_state(label="joy", text=("joy", 0.6), audio=("joy", 0.6), transcript="I am fine."), "sadness", True)
+    note = build_prompt(state, [])[-1]["content"]
+    assert "your words sound joy, but your face looks sadness" in note
+    assert "they look sadness even though" in note and "do not assume" in note
+    assert "voice" not in note
+
+
+def test_voice_and_face_can_both_disagree_with_the_words():
+    state = with_face(make_state(label="neutral", confidence=0.5, text=("joy", 0.6), audio=("anger", 0.55), conflict=True,
+                                 transcript="It's fine."), "sadness", True)
+    note = build_prompt(state, [])[-1]["content"]
+    assert "but your voice sounds anger and your face looks sadness" in note
+    assert "they sound anger and look sadness even though" in note
+
+
+def test_a_face_that_agrees_changes_nothing():
+    plain = build_prompt(make_state(), [])[-1]["content"]
+    assert build_prompt(with_face(make_state(), "joy", False), [])[-1]["content"] == plain
