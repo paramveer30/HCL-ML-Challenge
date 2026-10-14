@@ -23,3 +23,6 @@ __pycache__/
 
 # Word lock files
 ~$*
+
+# the demo video is the one video kept in the repository
+!docs/demo.mp4

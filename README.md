@@ -25,10 +25,7 @@
 
 ## Demo video
 
-<!-- Paste the video here. On GitHub: edit this file, drag the .mp4 onto this line, and GitHub inserts a player link.
-     Or replace VIDEO_LINK below with a YouTube or Google Drive link. -->
-
-**[Watch the demo (about 4 minutes)](VIDEO_LINK)**
+**[Watch the demo (5.5 minutes)](docs/demo.mp4)**: the video is in the repository at `docs/demo.mp4` (10 MB). On the file's page, click **View raw** to play or download it.
 
 The full write-up (decisions, results, problems, limitations, next steps) is in the **[report (Word)](REPORT.docx)**, with the same text in [REPORT.md](REPORT.md).
 

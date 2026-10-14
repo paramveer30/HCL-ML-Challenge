@@ -1,5 +1,7 @@
 # Human Computer Lab ML Challenge: report
 
+**Demo video:** `docs/demo.mp4` in the repository (5.5 minutes): live mode with the webcam, the three inputs disagreeing, interrupting the robot, sample MELD clips, and one input travelling to both outputs.
+
 Track: Text + Audio, plus the optional vision extension. Every number here came from a script in this repository, run on the machine in section 6. The full log of decisions and measurements, including what did not work, is in `DECISIONS.md`.
 
 ![Figure 1. The web page playing a MELD sample clip. Left: the conversation. Middle: the fused emotion, each model's view, and the timings. Right: the clip, or the webcam in live mode.](docs/figures/page.png)
