@@ -9,6 +9,7 @@ from meldrt.models.fusion import (
     softmax,
     tone_text_conflict,
     tune_alpha,
+    two_against_words,
 )
 
 
@@ -164,3 +165,22 @@ def test_fit_temperature_flattens_a_model_that_is_too_sure():
     temperature, before, after = fit_temperature(probs, y)
     assert temperature > 1.0
     assert after < before
+
+
+# --- two_against_words ---
+
+def test_voice_and_face_agreeing_against_the_words_is_noticed_even_when_unsure():
+    words, voice, face = probs((1, 0.9), (0, 0.1)), probs((3, 0.35), (0, 0.3), (1, 0.35 - 0.01)), probs((3, 0.4), (0, 0.3))
+    assert two_against_words(words, voice, face)
+
+
+def test_not_when_voice_and_face_say_different_things():
+    assert not two_against_words(probs((1, 0.9)), probs((3, 0.6)), probs((4, 0.6)))
+
+
+def test_not_when_they_agree_with_the_words():
+    assert not two_against_words(probs((3, 0.9)), probs((3, 0.6)), probs((3, 0.6)))
+
+
+def test_not_when_voice_and_face_are_just_neutral():
+    assert not two_against_words(probs((1, 0.9)), probs((0, 0.6)), probs((0, 0.6)))

@@ -72,7 +72,7 @@ fusion:
 samples:                             # the sample clips of the web page, built by scripts/make_samples.py from dev
   dir: ui/clips
   gap_seconds: 1.5                   # silence between the lines of a dialogue sample
-  lines: [dia4_utt10, dia13_utt8, dia15_utt4, dia11_utt12, dia16_utt10, dia94_utt2, dia40_utt8]
+  lines: [dia4_utt10, dia13_utt8, dia15_utt4, dia11_utt12, dia16_utt10, dia23_utt6, dia40_utt8]
   dialogues: [3, 96]                 # short dialogues played line by line, so later lines have context
 
 eval:

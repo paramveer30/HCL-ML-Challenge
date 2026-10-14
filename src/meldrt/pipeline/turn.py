@@ -7,7 +7,7 @@ import numpy as np
 
 from meldrt.data.video import read_timed_frames
 from meldrt.labels import LABELS
-from meldrt.models.fusion import late_fuse, sharpen, tone_text_conflict
+from meldrt.models.fusion import late_fuse, sharpen, tone_text_conflict, two_against_words
 from meldrt.models.text import format_target
 from meldrt.pipeline.endpointer import Endpointer
 from meldrt.pipeline.respond import build_prompt, stream_reply
@@ -124,8 +124,9 @@ class Pipeline:
         turn_started = start - endpoint_ms / 1000 - len(wav) / self.sample_rate
         seen = [(face, from_camera) for seen_at, face, from_camera in self.faces if seen_at >= turn_started]
         self.faces.clear()      # a face belongs to one turn only
-        faces = [face for face, _ in seen]
+        # one turn has one source of pictures; if both kinds arrived, the camera's are the ones kept
         from_camera = any(camera for _, camera in seen)
+        faces = [face for face, camera in seen if camera == from_camera]
         p_vision, vision_ms = timed(self.classifier.vision_probs, faces, from_camera) if faces else (None, 0.0)
 
         if p_audio is None:
@@ -141,6 +142,10 @@ class Pipeline:
             fused = w_text * p_text + w_audio * (p_text if p_audio is None else p_audio) + w_vision * p_vision
             vision_view = view_of(p_vision)
             face_conflict = tone_text_conflict(p_text, p_vision, self.min_conf)
+            if p_audio is not None and two_against_words(p_text, p_audio, p_vision):
+                # voice and face agree with each other and not with the words. The fused label still follows
+                # the weights chosen on dev, but the mismatch is flagged even if neither of the two is very sure
+                conflict = face_conflict = True
 
         fused = sharpen(fused, self.temperature)
 

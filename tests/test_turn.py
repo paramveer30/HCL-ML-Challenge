@@ -302,6 +302,17 @@ def test_face_and_words_conflict_is_flagged_on_its_own():
     assert state.face_text_conflict and not state.tone_text_conflict
 
 
+def test_voice_and_face_agreeing_against_the_words_flags_both_even_below_the_threshold():
+    # happy words, and a voice and a face that both lean angry without being sure (under 0.4 each)
+    unsure_anger = probs((3, 0.35), (0, 0.3), (4, 0.2), (1, 0.15))
+    pipeline, _ = make_with_vision(p_text=JOY, p_audio=unsure_anger, p_vision=unsure_anger)
+    pipeline.push_image(FACE)
+    state = run(pipeline, len(ONE_TURN))[-1]
+    assert state.tone_text_conflict and state.face_text_conflict
+    # the fused label still follows the weights: 0.5 words, 0.25 voice, 0.25 face
+    assert state.label == "joy"
+
+
 def test_too_short_for_audio_uses_text_in_its_place_next_to_the_face():
     pipeline, _ = make_with_vision(p_audio=None)
     pipeline.push_image(FACE)
@@ -338,6 +349,15 @@ def test_faces_are_used_for_one_turn_only():
     pipeline.push_image(FACE)
     first, second = [s for s in run(pipeline, len(ONE_TURN) * 2) if s]
     assert first.faces_seen == 1 and second.faces_seen == 0
+
+
+def test_pictures_from_two_sources_in_one_turn_are_not_mixed():
+    pipeline, classifier = make_with_vision()
+    pipeline.push_image(FACE)                        # a clip's picture
+    pipeline.push_image(FACE, from_camera=True)      # and a camera's, for example from a second browser tab
+    pipeline.push_image(FACE, from_camera=True)
+    state = run(pipeline, len(ONE_TURN))[-1]
+    assert classifier.from_camera is True and classifier.faces_used == 2 and state.faces_seen == 2
 
 
 def test_push_image_hands_back_what_it_saw():

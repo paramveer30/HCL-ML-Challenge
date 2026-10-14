@@ -214,6 +214,19 @@ def test_a_sample_with_a_video_feeds_its_frames_in_as_it_plays(tmp_path, monkeyp
     assert page.pipeline.from_camera is False      # a clip's pictures, not a live camera
 
 
+def test_camera_pictures_are_ignored_while_a_clip_plays(tmp_path):
+    page = page_with_fakes(tmp_path)
+    page.playing_clip = True
+    assert page.look(jpeg()) is None and page.pipeline.images == []
+    page.playing_clip = False
+    assert page.look(jpeg())["found"] is True
+
+
+def test_a_finished_clip_lets_the_camera_in_again(tmp_path, monkeypatch):
+    page, _ = replay(tmp_path, monkeypatch, "hello.wav")
+    assert page.playing_clip is False
+
+
 def test_a_sample_without_a_video_has_none(tmp_path):
     assert page_with_fakes(tmp_path).video_of("hello.wav") is None
 

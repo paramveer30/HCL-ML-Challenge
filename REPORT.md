@@ -158,6 +158,7 @@ What was measured on dev before choosing:
 - The ViT's own expression classifier, with no MELD training, scores 0.257 / 0.171 on dev. The head trained on MELD scores 0.348 / 0.208 on the same rows, so the training is worth 0.09.
 - Seven variants of the head (input normalization, learning rate, dropout, last layer only; two seeds each) all landed between 0.344 and 0.361, so the head is not what limits it.
 - When the face model is at least 50% sure and disagrees with a text model that is also at least 50% sure (2.1% of dev rows), the words are right 48% of the time and the face 22%.
+- When voice and face agree with each other against the words (150 dev rows), the words are right 47% of the time and the pair 31%; following the pair would lower dev weighted F1 from 0.635 to 0.601. So the fused label keeps following the dev-tuned weights, and those turns are flagged for the robot to check in instead (the fusion is right on only 55% of them).
 
 ### Confidence
 

@@ -92,13 +92,20 @@ function addLine(kind, who, text) {
 }
 
 // what the three models say about each other, in a few words
+function topOf(probs) {
+  return LABELS.reduce((best, label) => (probs[label] > probs[best] ? label : best), LABELS[0]);
+}
+
 function agreementText(event) {
-  const against = [];
-  if (event.disagree) against.push("tone");
-  if (event.face_disagree) against.push("face");
-  if (against.length === 0) return event.faces ? "words, tone and face agree" : "words and tone agree";
-  if (against.length === 2) return "tone and face both point a different way from the words";
-  return "words and " + against[0] + " point different ways";
+  const words = topOf(event.text), voice = topOf(event.audio), face = topOf(event.vision);
+  if (event.disagree && event.face_disagree) {
+    return voice === face
+      ? "words say " + words + ", but voice and face both say " + voice
+      : "words say " + words + ", but voice says " + voice + " and face says " + face;
+  }
+  if (event.disagree) return "words say " + words + ", but voice says " + voice;
+  if (event.face_disagree) return "words say " + words + ", but face says " + face;
+  return event.faces ? "words, voice and face do not disagree" : "words and voice do not disagree";
 }
 
 function showEmotion(event) {

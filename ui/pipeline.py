@@ -78,6 +78,7 @@ class PagePipeline:
         self.speaker = None
         self.lock = threading.Lock()            # one turn at a time, even with two browser tabs open
         self.interrupted = threading.Event()    # set when the person starts talking over the robot
+        self.playing_clip = False               # True while a sample clip runs: camera pictures are ignored then
         self.warming = False
 
     def list_clips(self):
@@ -100,7 +101,8 @@ class PagePipeline:
     def look(self, jpeg):
         """jpeg: one camera image as JPEG bytes. The face in it, if any, is kept for the turn being spoken.
         Returns a face event for the page: where the face is (as shares of the picture) and what it shows."""
-        if self.pipeline is None:
+        # a clip brings its own pictures; a camera (for example in a second browser tab) must not mix into it
+        if self.pipeline is None or self.playing_clip:
             return None
         frame = cv2.imdecode(np.frombuffer(jpeg, dtype=np.uint8), cv2.IMREAD_COLOR)
         if frame is None:
@@ -204,37 +206,46 @@ class PagePipeline:
             wav = np.concatenate([wav, np.zeros(SAMPLE_RATE, dtype=np.float32)])
             # a sample is its own conversation: the sample played before it must not become its context
             self.pipeline.reset()
-            yield {"type": "status", "state": "hearing"}
-            self.play_out_loud(wav)
-            # if the sample has a video, its pictures go in at the moment they belong, like a camera
-            video = self.video_of(name)
-            pictures = self.pipeline.read_video(video) if video is not None else []
-            n = self.pipeline.frame_samples
-            said = []
-            for start in range(0, len(wav) - n + 1, n):
-                if self.interrupted.is_set():
-                    break
-                frame_start = time.perf_counter()
-                while pictures and pictures[0][0] <= start / SAMPLE_RATE:
-                    self.pipeline.push_image(pictures.pop(0)[1])
-                state = self.pipeline.push_frame(wav[start : start + n])
-                if state is not None:
-                    said.append(state.label)
-                    yield from self.answer(state)
-                    # the robot's voice cut the clip off; carry on from where the pipeline is
-                    self.play_out_loud(wav[start + n :])
-                time.sleep(max(0.0, n / SAMPLE_RATE - (time.perf_counter() - frame_start)))
-            if not said and not self.interrupted.is_set():
-                yield {"type": "notice", "text": "no speech found in this clip."}
-            expected = sample_labels(name)
-            if expected and len(expected) == len(said):
-                yield {"type": "notice", "text": f"sample label: {', '.join(expected)}. the robot said: {', '.join(said)}."}
-            elif expected and said and not self.interrupted.is_set():
-                yield {"type": "notice", "text": f"this sample has {len(expected)} labelled lines but the robot heard "
-                                                 f"{len(said)} turns, so they are not compared."}
-            # pictures from the end of the clip must not count as faces of whatever the person says next
-            self.pipeline.clear_audio()
+            self.playing_clip = True
+            try:
+                yield from self.play_clip(name, wav)
+            finally:
+                # also when the clip is cut short. Pictures from its end must not count as faces of
+                # whatever the person says next, and the camera is let in again
+                self.pipeline.clear_audio()
+                self.playing_clip = False
             yield {"type": "status", "state": "idle"}
+
+    def play_clip(self, name, wav):
+        """Feeds the clip's sound and pictures through the pipeline and answers every turn it hears."""
+        yield {"type": "status", "state": "hearing"}
+        self.play_out_loud(wav)
+        # if the sample has a video, its pictures go in at the moment they belong, like a camera
+        video = self.video_of(name)
+        pictures = self.pipeline.read_video(video) if video is not None else []
+        n = self.pipeline.frame_samples
+        said = []
+        for start in range(0, len(wav) - n + 1, n):
+            if self.interrupted.is_set():
+                return
+            frame_start = time.perf_counter()
+            while pictures and pictures[0][0] <= start / SAMPLE_RATE:
+                self.pipeline.push_image(pictures.pop(0)[1])
+            state = self.pipeline.push_frame(wav[start : start + n])
+            if state is not None:
+                said.append(state.label)
+                yield from self.answer(state)
+                # the robot's voice cut the clip off; carry on from where the pipeline is
+                self.play_out_loud(wav[start + n :])
+            time.sleep(max(0.0, n / SAMPLE_RATE - (time.perf_counter() - frame_start)))
+        if not said:
+            yield {"type": "notice", "text": "no speech found in this clip."}
+        expected = sample_labels(name)
+        if expected and len(expected) == len(said):
+            yield {"type": "notice", "text": f"sample label: {', '.join(expected)}. the robot said: {', '.join(said)}."}
+        elif expected and said:
+            yield {"type": "notice", "text": f"this sample has {len(expected)} labelled lines but the robot heard "
+                                             f"{len(said)} turns, so they are not compared."}
 
     def play_out_loud(self, wav):
         """Plays clip audio through the speakers without waiting, so the person watching hears what the robot hears."""

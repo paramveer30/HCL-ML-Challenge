@@ -2,6 +2,7 @@
 import numpy as np
 
 from meldrt.eval.metrics import f1_summary
+from meldrt.labels import LABELS
 
 
 def softmax(logits):
@@ -90,3 +91,10 @@ def tone_text_conflict(p_text, p_audio, min_conf=0.4):
     labels_differ = p_text.argmax() != p_audio.argmax()
     both_sure = p_text.max() >= min_conf and p_audio.max() >= min_conf
     return bool(labels_differ and both_sure)
+
+
+def two_against_words(p_text, p_audio, p_vision):
+    """For one line, shape (7,) each: True when the voice and the face give the same top label,
+    that label is not neutral, and the words give a different one."""
+    voice, face = p_audio.argmax(), p_vision.argmax()
+    return bool(voice == face and voice != p_text.argmax() and LABELS[int(voice)] != "neutral")
