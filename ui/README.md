@@ -36,7 +36,7 @@ Switching modes clears the conversation. `[ clear conversation ]` does the same 
 
 ## Building the sample clips
 
-The clips are MELD's data and are not in the repository, so the list starts empty. Build them from your own MELD copy (after `python -m meldrt.data.extract_audio`):
+The clips are MELD's data and are not in the repository. `python scripts/fetch_models.py` downloads them from the release (`meldrt-samples.zip`). To build them yourself from your own MELD copy instead (after `python -m meldrt.data.extract_audio`):
 
 ```powershell
 python scripts/make_samples.py
@@ -48,7 +48,7 @@ It writes a WAV and an mp4 per sample into `ui/clips/`. Which dev clips and dial
 
 - The big number next to the emotion is the fused confidence after calibration: on dev, turns shown at 0.8 to 0.9 were right 82% of the time (see `REPORT.md`).
 - The table has one column per model: words, voice, face, and the fused result. A turn uses the faces seen while it was spoken; the line under the right-hand box says how many. With no face the turn is words and voice only.
-- For your camera the face view comes from a facial expression classifier trained on in-the-wild colour photos (HSEmotion). For the pictures of a MELD clip the head we trained on MELD is used. `vision.live_head` in `configs/default.yaml` switches this. On MELD the face is weak and the fusion weights chosen on dev give it no say in the fused label (see `REPORT.md`), so it shows up as its own column and in the robot's reaction, not in the big label.
+- For your camera the face view comes from a facial expression classifier trained on in-the-wild colour photos (HSEmotion). For the pictures of a MELD clip the head I trained on MELD is used. `vision.live_head` in `configs/default.yaml` switches this. On MELD the face is weak and the fusion weights chosen on dev give it no say in the fused label (see `REPORT.md`), so it shows up as its own column and in the robot's reaction, not in the big label.
 - When a confident voice or face disagrees with confident words, the log says so and the robot is told.
 - The timing columns: `transcript` is speech recognition, `emotion` is the time added after the transcript until the state is ready, `first word` is from the state to the first word of the reply, and `total` is from the end of the turn to the first spoken audio. For a clip the end of the turn is when the endpointer decides it is over, so the 600 ms of silence it waits for is not in the total.
 
@@ -86,7 +86,7 @@ Black background and white monospace text with wide spacing. The title is at the
 ```
 ui/server.py              FastAPI app: static files, /clips, /clip-video, /ws
 ui/pipeline.py            the real pipeline driven by the page, and the event format
-ui/clips/                 the sample clips, built by scripts/make_samples.py (not committed)
+ui/clips/                 the sample clips, from the release or scripts/make_samples.py (not committed)
 ui/static/index.html      the page
 ui/static/style.css       the look
 ui/static/app.js          WebSocket, the two modes, conversation, probability table, timing, microphone

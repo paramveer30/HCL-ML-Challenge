@@ -40,7 +40,9 @@ button, select, input { font: inherit; color: inherit; letter-spacing: inherit; 
 .head h1 { font-size: 1.7em; line-height: 1.35; letter-spacing: 0.06em; }
 .head h1 span + span::before { content: "\00b7"; margin: 0 1.2ch; }
 .head .by { margin-top: 6px; }
-.head .by #email { margin-left: 2.5ch; }
+.head .by #email, .head .by a { margin-left: 2.5ch; }
+.head .by a { color: var(--dim); text-decoration: underline; text-underline-offset: 3px; }
+.head .by a:hover { color: var(--text); }
 
 /* one row of controls: sample clips on the left, the talk button in the middle, settings on the right */
 main { flex: 1; min-height: 0; display: flex; flex-direction: column; }

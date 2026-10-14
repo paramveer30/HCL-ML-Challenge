@@ -18,7 +18,7 @@ def read_timed_frames(path, k, max_seconds):
     wanted = set(sample_indexes(n_frames, k))
     frames = []
     for i in range(n_frames):
-        # grab() moves to the next frame; only the frames we keep are fully decoded
+        # grab() moves to the next frame; only the frames kept are fully decoded
         if not video.grab():
             break
         if i in wanted:

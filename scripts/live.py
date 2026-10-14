@@ -42,7 +42,7 @@ def main():
     pipeline.warm_up()
     speaker = None if args.no_voice else build_speaker()
 
-    # the sound card calls on_audio from its own thread; we only hand the frame over to the main loop
+    # the sound card calls on_audio from its own thread; it only hands the frame over to the main loop
     frames = queue.Queue()
 
     def on_audio(indata, frame_count, time_info, status):

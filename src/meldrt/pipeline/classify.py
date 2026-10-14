@@ -93,7 +93,7 @@ class EmotionClassifier:
         Returns a Face for the largest face in it, or None.
 
         Each face model is used where it was trained. A camera shows one person facing it, like the photos
-        the expression classifier learned from. A MELD clip is a TV shot, which is what our own head saw.
+        the expression classifier learned from. A MELD clip is a TV shot, which is what the MELD-trained head saw.
         """
         found = self.finder.largest_face(frame)
         if found is None:

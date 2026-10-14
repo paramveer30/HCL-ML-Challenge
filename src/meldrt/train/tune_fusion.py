@@ -26,7 +26,7 @@ def main():
 
     alpha, best_f1 = tune_alpha(p_text, p_audio, y, step)
 
-    # the whole curve, so we can see how flat it is around the best alpha
+    # the whole curve, to show how flat it is around the best alpha
     grid = []
     for i in range(round(1 / step) + 1):
         a = round(i * step, 6)

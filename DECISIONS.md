@@ -3,11 +3,11 @@
 ## 2026-10-01: Text + Audio track
 Context: the brief asks for one primary track, Text + Audio or Text + Vision.
 Decision: Text + Audio. MELD video has multiple faces, cuts, and off-screen speakers, so vision needs face detection and active-speaker tracking before any emotion modeling. Audio is one stream per utterance.
-Tradeoff: we lose facial cues, which matter for some emotions (disgust, surprise). Vision is listed as left out.
+Tradeoff: I lose facial cues, which matter for some emotions (disgust, surprise). Vision is listed as left out.
 
 ## 2026-10-01: Real-time means turn-based
-Context: the brief asks us to define real-time for our interaction.
-Decision: a robot conversation is turn-based. Audio streams in as 32 ms frames, a turn ends after 600 ms of silence, and we target a state within 600 ms and a first reply token within 1.5 s (p50) after the turn ends.
+Context: the brief asks me to define real-time for my interaction.
+Decision: a robot conversation is turn-based. Audio streams in as 32 ms frames, a turn ends after 600 ms of silence, and I target a state within 600 ms and a first reply token within 1.5 s (p50) after the turn ends.
 Tradeoff: no reactions mid-sentence and no barge-in. The 600 ms hangover adds fixed delay but avoids cutting people off at short pauses.
 
 ## 2026-10-12: Everything on the desktop
@@ -20,15 +20,15 @@ Context: the 1660 Ti has no tensor cores and the 1660 series is known for fp16 N
 Decision: train and run PyTorch models in fp32. Quantized formats inside dedicated runtimes (int8 Whisper, 4-bit GGUF) are fine.
 Tradeoff: slower training and more VRAM than mixed precision. The models are small enough that this is acceptable.
 
-## 2026-10-01: Frozen WavLM with cached features (pending approval)
+## 2026-10-01: Frozen WavLM with cached features
 Context: 6 GB VRAM and 16 GB RAM rule out fine-tuning a speech encoder alongside everything else.
 Decision: run WavLM-base-plus once over every clip, cache the time-averaged output of all 13 layers, and train a small head with learned layer weights on the cache.
 Tradeoff: frozen features cap audio accuracy below a fine-tuned encoder, and mean pooling throws away timing within the clip.
 
 ## 2026-10-01: Late fusion with one weight tuned on dev
-Context: we need to combine text and audio and prove what each adds.
+Context: I need to combine text and audio and prove what each adds.
 Decision: $p = \alpha p_{\text{text}} + (1 - \alpha) p_{\text{audio}}$ with $\alpha$ chosen on dev.
-Tradeoff: can't learn cross-modal interactions (for example "positive words + flat tone"). We expose disagreement separately as `tone_text_conflict`.
+Tradeoff: can't learn cross-modal interactions (for example "positive words + flat tone"). I expose disagreement separately as `tone_text_conflict`.
 
 ## 2026-10-01: Test split read once
 Context: tuning on test inflates reported numbers.
@@ -36,7 +36,7 @@ Decision: all selection uses dev. Only `scripts/final_eval.py` scores test.
 Tradeoff: none worth taking.
 
 ## 2026-10-12: Qwen2.5-1.5B served by Ollama
-Context: we need a local, streaming, small LLM that fits next to the other models on 6 GB, on Windows.
+Context: I need a local, streaming, small LLM that fits next to the other models on 6 GB, on Windows.
 Decision: Qwen2.5-1.5B-Instruct, 4-bit, served by Ollama on 127.0.0.1. Chosen over the 3B for lower latency, more VRAM headroom, and an Apache 2.0 license (the 3B has a research-only license).
 Tradeoff: replies are a bit less nuanced than the 3B's.
 
@@ -51,9 +51,9 @@ Decision: `live.py` (mic) and `replay.py` (MELD clip) stream 32 ms frames throug
 Tradeoff: no remote client. A server would wrap the same pipeline without changing it.
 
 ## 2026-10-12: Environment and dependencies
-Context: we need a reproducible Python setup on Windows with a CUDA build of PyTorch.
+Context: I need a reproducible Python setup on Windows with a CUDA build of PyTorch.
 Decision: Python 3.11 venv, PyTorch 2.14.1 from the cu126 index, versions pinned in `requirements.txt`. ffmpeg is a system install on PATH. The dataset lives outside the repo (`D:/data/MELD`), with the path in `configs/default.yaml`.
-Dependencies and why: `torch` (models), `transformers` (RoBERTa, WavLM), `accelerate` (required by the Hugging Face `Trainer`), `pandas` (MELD CSVs), `numpy` (cached features), `PyYAML` (config), `soundfile` (reading WAVs), `scikit-learn` (reference F1 to test our own metrics against), `pytest` (tests).
+Dependencies and why: `torch` (models), `transformers` (RoBERTa, WavLM), `accelerate` (required by the Hugging Face `Trainer`), `pandas` (MELD CSVs), `numpy` (cached features), `PyYAML` (config), `soundfile` (reading WAVs), `scikit-learn` (reference F1 to test my own metrics against), `pytest` (tests).
 Tradeoff: the PyTorch install is a separate command because of the CUDA index. The README has to say so.
 
 ## 2026-10-12: Audio extraction
@@ -64,11 +64,11 @@ Tradeoff: clips longer than 15 s lose their tail in training, the same way a liv
 ## 2026-10-12: Text cleanup
 Context: the CSVs in the raw release store apostrophes, ellipses, and long dashes as cp1252 control characters (U+0092, U+0085, U+0097; 414 apostrophes in dev alone). The copy on GitHub has the same text with curly punctuation instead, and either shows up as junk like `â€™` if read with the wrong encoding.
 Decision: read the CSVs as UTF-8 and replace a small explicit map of characters with plain ASCII (`'`, `"`, `...`, `--`), then collapse whitespace. Accented letters are left alone.
-Tradeoff: an explicit map only fixes what we listed. Anything new would pass through unchanged.
+Tradeoff: an explicit map only fixes what I listed. Anything new would pass through unchanged.
 
 ## 2026-10-12: Data counts after extraction
-Context: we need to know exactly which utterances have audio before training anything.
-Measured: CSV rows are 9,989 / 1,109 / 2,610 (train / dev / test) in 1,038 / 114 / 280 dialogues, matching the paper. Extracted WAVs: 9,988 / 1,112 / 2,615. Two utterances have no audio: train `dia125_utt3` (the mp4 is corrupt, ffmpeg reports invalid data) and dev `dia110_utt7` (no mp4 in the release). Every test row has a WAV. The dev and test folders hold a few clips with no CSV row, and the test folder has 132 extra `final_videos_test*` files that we ignore. Dev extraction took 33 s for 1,112 clips. Total audio is about 11.9 hours (median clip 2.5 s, 37 clips at the 15 s cap). Feature caching: 13,477 files, 258 MB, every file checked for shape, dtype, and finite values; train and test (12,603 clips) took 6 min 41 s, about 32 ms per clip.
+Context: I need to know exactly which utterances have audio before training anything.
+Measured: CSV rows are 9,989 / 1,109 / 2,610 (train / dev / test) in 1,038 / 114 / 280 dialogues, matching the paper. Extracted WAVs: 9,988 / 1,112 / 2,615. Two utterances have no audio: train `dia125_utt3` (the mp4 is corrupt, ffmpeg reports invalid data) and dev `dia110_utt7` (no mp4 in the release). Every test row has a WAV. The dev and test folders hold a few clips with no CSV row, and the test folder has 132 extra `final_videos_test*` files that I ignore. Dev extraction took 33 s for 1,112 clips. Total audio is about 11.9 hours (median clip 2.5 s, 37 clips at the 15 s cap). Feature caching: 13,477 files, 258 MB, every file checked for shape, dtype, and finite values; train and test (12,603 clips) took 6 min 41 s, about 32 ms per clip.
 Decision: keep both utterances in the text data and treat them as "no audio", the same as clips under 0.3 s.
 Tradeoff: fusion needs a text-only fallback for a handful of utterances.
 
@@ -76,12 +76,12 @@ Tradeoff: fusion needs a text-only fallback for a handful of utterances.
 Context: measured on the 1660 Ti, WavLM-base-plus on a clip of 0.2 s or less allocates 9.9 GB and takes 2.5 to 4 s. From 0.25 s up it peaks at 387 to 557 MiB and takes 35 to 90 ms (15 s clip: 90 ms).
 Decision: `audio.min_seconds: 0.3`. Shorter clips are skipped by the caching script and listed in `skipped.txt`.
 Measured on the full dataset: 164 / 20 / 54 clips skipped in train / dev / test. Counting CSV rows, and adding the corrupt and the missing clip, 165 / 21 / 53 rows (about 2% of each split) have no audio features.
-Decided: these rows stay text-only. Fusion uses the text probabilities alone for them, and the audio-only row of the results table says how it treats them. We do not pad short clips with silence, because that would invent audio evidence the clip doesn't have.
+Decided: these rows stay text-only. Fusion uses the text probabilities alone for them, and the audio-only row of the results table says how it treats them. I do not pad short clips with silence, because that would invent audio evidence the clip doesn't have.
 Tradeoff: those utterances have no audio prediction. The live pipeline needs the same guard.
 
 ## 2026-10-12: Training scripts never read the test split
-Context: the plan had the text training script save logits for train, dev, and test.
-Decision: `train_text.py` loads train and dev only and saves dev logits. Test predictions are made inside `scripts/final_eval.py`, so the rule "only one script touches test" holds with no exceptions for labels. (The audio features for test clips were cached from the WAV files, without opening the test CSV.) We also don't save the text model's predictions on its own training data: nothing in the plan may be fit on them.
+Context: I first meant the text training script to save logits for train, dev, and test.
+Decision: `train_text.py` loads train and dev only and saves dev logits. Test predictions are made inside `scripts/final_eval.py`, so the rule "only one script touches test" holds with no exceptions for labels. (The audio features for test clips were cached from the WAV files, without opening the test CSV.) I also don't save the text model's predictions on its own training data: nothing may be fit on them.
 Tradeoff: `final_eval.py` has to load both models instead of just reading saved files.
 
 ## 2026-10-12: Text model input and training settings
@@ -100,7 +100,7 @@ Measured (seed 0, 3 epochs, 503 s on the 1660 Ti): dev weighted F1 / macro F1 pe
 Per class on dev: neutral 0.760, joy 0.605, surprise 0.661, anger 0.418, sadness 0.429, disgust 0.200, fear 0.282.
 
 ## 2026-10-12: Audio head settings and result on dev
-Context: the head trains on cached features, so we can afford many epochs and pick the best on dev.
+Context: the head trains on cached features, so I can afford many epochs and pick the best on dev.
 Decision: 13 learned layer scores (softmax, start equal), then 768 to 256, ReLU, dropout 0.2, 256 to 7: 198,676 parameters. AdamW, lr 1e-3, batch 64, 30 epochs, same class weights as text, features used as cached with no extra normalization. Trained on the 9,824 train rows that have audio; the best epoch is chosen by dev weighted F1 on the 1,088 dev rows that have audio.
 Measured (seed 0, 25 s on the GPU; the CPU gives the same predictions): best epoch 17, **0.502 weighted, 0.361 macro** on dev rows with audio. Over all 1,109 dev rows, predicting neutral for the 21 with no audio, 0.500 / 0.358.
 Per class on dev (all rows): neutral 0.663, joy 0.336, surprise 0.437, anger 0.483, sadness 0.356, disgust 0.000, fear 0.233. Audio beats text on anger only.
@@ -112,7 +112,7 @@ Context: late fusion needs one number, the weight on text.
 Decision: grid search over 0, 0.05, ..., 1 on dev weighted F1, smaller alpha on ties. Rows with no audio use text alone. Result: **alpha = 0.45**, dev weighted F1 0.6346 (text alone 0.6150, audio alone 0.5000).
 Measured curve on dev: 0.505 at alpha 0, 0.586 at 0.30, 0.623 at 0.40, 0.635 at 0.45, 0.627 at 0.50, then between 0.619 and 0.629 up to 0.90, and 0.615 at 1. So the curve is nearly flat from 0.40 to 0.85, and 0.45 is a single high point on it.
 Note: alpha below 0.5 does not mean audio is the better model. The audio head's probabilities are less peaked than the text model's, so they need a larger weight to change the answer at all.
-Conflict flag: text and audio top labels differ and both top probabilities are at least 0.4 (`fusion.conflict_min_conf`, pending approval; it does not affect any score).
+Conflict flag: text and audio top labels differ and both top probabilities are at least 0.4 (`fusion.conflict_min_conf`; it does not affect any score).
 
 ## 2026-10-12: Final result on test (read once)
 Context: `scripts/final_eval.py` is the only code that reads the test split. It was checked first with `--split dev`, where it reproduced the saved dev numbers exactly, and then run once on test at 22:19 with everything frozen: text checkpoint (epoch 2), audio head (epoch 17), alpha 0.45. Seed 0, one seed.
@@ -161,7 +161,7 @@ Tradeoff: the live system's fused label is no more accurate than text alone on t
 
 ## 2026-10-12: Endpointing rules
 Context: the live pipeline gets one speech / no-speech flag per 32 ms frame and has to decide where a turn starts and ends.
-Decision: a turn starts after 250 ms of speech in a row and ends after 600 ms of silence in a row or at 15 s. In frames: 8 to start (256 ms), 19 to end (608 ms), 468 at most (14.976 s). The start and end counts are rounded up so we never fire early; the cap is rounded down so a turn never exceeds 15 s. All three are config values.
+Decision: a turn starts after 250 ms of speech in a row and ends after 600 ms of silence in a row or at 15 s. In frames: 8 to start (256 ms), 19 to end (608 ms), 468 at most (14.976 s). The start and end counts are rounded up so I never fire early; the cap is rounded down so a turn never exceeds 15 s. All three are config values.
 Tradeoff: 600 ms of waiting is added to every reply. Shorter would cut people off at pauses.
 
 ## 2026-10-12: Dependencies for the live pipeline
@@ -174,7 +174,7 @@ Tradeoff: faster-whisper and silero-vad bring `ctranslate2` and `onnxruntime` al
 Context: frames of 512 samples (32 ms) arrive one at a time; each finished turn has to become one state.
 Decisions:
 - The pipeline checks the sample rate once and the size of every frame, and raises on a mismatch.
-- While waiting for a turn we keep the last 448 ms of frames (the 7 speech frames before the one that triggers the start, plus 200 ms of pre-roll), so the first word is not cut. The silence that ended the turn is dropped before the models see the audio.
+- While waiting for a turn I keep the last 448 ms of frames (the 7 speech frames before the one that triggers the start, plus 200 ms of pre-roll), so the first word is not cut. The silence that ended the turn is dropped before the models see the audio.
 - Speech recognition and the audio model are started together in two threads; the text model runs once the transcript exists.
 - Whisper decodes greedily (`beam_size: 1`) to keep the delay down.
 - A turn with an empty transcript produces no state.
@@ -187,20 +187,20 @@ Tradeoff: pauses over 600 ms split one sentence into two turns, and very quiet s
 
 ## 2026-10-12: Reply prompt and streaming
 Context: the reply has to be short, spoken to the person, and grounded in both the words and the state.
-Decision: one prompt string with fixed rules (talk to the person as "you", at most 2 sentences, about 30 words, plain English), the earlier turns as Person / Robot lines, what was just said, the fused label with its confidence, and what the words alone and the voice alone suggest. Two extra instructions: on a tone/text conflict the robot mentions that the voice sounds different from the words and checks in with one question; when the fused confidence is under 0.45 (`reply.low_conf`, pending approval) it responds to the content and checks in without assuming a feeling. The reply is streamed from Ollama's `/api/generate` on 127.0.0.1 with the standard library, so no new dependency: 64 tokens at most, temperature 0.6, seed 0, model kept loaded for 30 minutes.
-What we tried: telling the model not to use quotation marks made it use them more, so that sentence was removed; surrounding quotes are stripped from the stored reply instead. Three wordings of the conflict instruction were compared on six made-up cases; the one kept most often produced a line like "You sound angry even though you say it's just another meeting."
+Decision: one prompt string with fixed rules (talk to the person as "you", at most 2 sentences, about 30 words, plain English), the earlier turns as Person / Robot lines, what was just said, the fused label with its confidence, and what the words alone and the voice alone suggest. Two extra instructions: on a tone/text conflict the robot mentions that the voice sounds different from the words and checks in with one question; when the fused confidence is under 0.45 (`reply.low_conf`) it responds to the content and checks in without assuming a feeling. The reply is streamed from Ollama's `/api/generate` on 127.0.0.1 with the standard library, so no new dependency: 64 tokens at most, temperature 0.6, seed 0, model kept loaded for 30 minutes.
+What I tried: telling the model not to use quotation marks made it use them more, so that sentence was removed; surrounding quotes are stripped from the stored reply instead. Three wordings of the conflict instruction were compared on six made-up cases; the one kept most often produced a line like "You sound angry even though you say it's just another meeting."
 Tradeoff: a 1.5B model does not always follow the rules. It sometimes describes the person instead of answering them, or names the wrong feeling. Reply quality is not scored.
 
 ## 2026-10-12: Replay and live scripts
 Context: the brief asks for one input travelling through the system to both outputs.
 Decision: `scripts/replay.py` reads a WAV, adds one second of silence so the turn can end, and pushes 512-sample frames at microphone speed; `scripts/live.py` does the same from the default microphone through a queue. Both set `HF_HUB_OFFLINE=1`, print the state as JSON, then the reply as it streams, then the timings. Both only import `meldrt.pipeline`. Replay treats each file as its own conversation.
-Replay never reads a MELD CSV: the true label of a clip can be typed in with `--label` for display. So the rule that only `final_eval.py` reads the test split still holds. The 10-clip check below used dev clips for the same reason (pending approval: the plan said test clips).
+Replay never reads a MELD CSV: the true label of a clip can be typed in with `--label` for display. So the rule that only `final_eval.py` reads the test split still holds. The 10-clip check below used dev clips for the same reason.
 Measured: 10 dev clips replayed in real time, 10 turns. Time after the turn ended, median / max: state 557 / 650 ms, first reply token 722 / 803 ms, full reply 885 / 985 ms. Targets were 600, 1,500, and 3,000 ms. The card showed 3.4 GB in use with every model loaded, including the reply model.
 Seen in those clips: the fused label matched the true label on 4 of the 10 first turns, and on 7 of 10 in an earlier run where the clips shared one conversation. Ten clips prove nothing either way, but the live path differs from the scored one in three ways: Whisper's words instead of the transcript, no dialogue context for a lone clip, and a generic speaker name. Its accuracy has not been measured. Several clips also contain more speech than their transcript, or less.
 Tradeoff: frames that arrive while a reply is streaming wait in a queue and are processed afterwards.
 
-## 2026-10-12: Voice on the GPU, not the CPU (pending approval)
-Context: the plan put Kokoro-82M on the CPU so it would not compete for GPU memory.
+## 2026-10-12: Voice on the GPU, not the CPU
+Context: I first put Kokoro-82M on the CPU so it would not compete for GPU memory.
 Measured on this machine, per sentence of 1.5 to 4.5 s of speech: 590 to 1,670 ms on the CPU, 109 to 182 ms on the GPU, with a peak of 637 MiB of GPU memory. Kokoro has 81,810,022 parameters, counted from the loaded model.
 Decision: `voice.device: cuda`. With every model loaded and the voice speaking, the card peaked at 5,371 MiB of 6,144 during a replay of four clips, about 2.1 GB of which was Windows and other open programs.
 Tradeoff: about 770 MiB of headroom. On a busier desktop it could run out; setting `voice.device: cpu` trades about a second of delay for that memory.
@@ -211,7 +211,7 @@ Context: waiting for the whole reply before speaking adds the full generation ti
 Decision: the streamed text is cut into sentences; a sentence is sent to the voice as soon as the next one starts (`.`, `!` or `?` followed by a space) or the reply ends. Two worker threads, one that synthesizes and one that plays, so the next sentence is prepared while the current one is playing and the text stream never waits for sound. Both scripts take `--no-voice`.
 The microphone hears the robot, so `live.py` waits until the voice has finished plus 200 ms, throws away everything recorded meanwhile, and clears the endpointer. The robot therefore cannot be interrupted (no barge-in), and anything the person says while it talks is lost.
 Measured: 10 dev clips replayed in real time with the voice on. Time after the turn ended, median / max: state 519 / 672 ms, first reply token 673 / 788 ms, full reply 871 / 1,114 ms, first spoken audio 977 / 2,049 ms. The 2,049 ms was the first turn, before a warm-up sentence was added at start-up; in a later run of four clips the first turn took 1,221 ms and the others 858 to 937 ms. The target for first audio was 2,000 ms.
-Tradeoff: a one-sentence reply is only spoken once it is complete, because we cannot know it has ended until then.
+Tradeoff: a one-sentence reply is only spoken once it is complete, because I cannot know it has ended until then.
 
 ## 2026-10-12: Parameter count
 Context: the brief caps the complete local inference path at 6 billion learned parameters, counting total parameters of every required component.
@@ -224,7 +224,7 @@ Dependency: `psutil` 7.2.2 for the memory readings in the benchmark (it was alre
 Context: the delays and resource use have to be measured, not estimated, over at least 50 turns.
 Decision: `scripts/bench_latency.py` pushes dev clips of at least one second through the live pipeline in 32 ms frames at real-time pace until 50 turns have been processed, one conversation per clip. The voice prepares every sentence but stays silent, so `first_audio` is the moment the first sound is ready for the sound card. The reply model is unloaded first so the GPU baseline does not include it.
 Measured (50 turns of 0.5 to 7.4 s, median 1.7 s; ms after the turn was judged over; p50 / p95): speech recognition 563 / 696, audio branch 455 / 521, text model 15 / 20, **state 576 / 713**, **first reply token 732 / 916**, **full reply 968 / 1,327**, **first spoken sound 996 / 1,260**. Endpointing adds 608 ms before all of these. Targets were 600, 1,500, 3,000, and 2,000 ms at p50: all met at p50; the state met its target on 58% of turns and the other three on every turn.
-Memory: GPU 1,858 MiB before loading (other programs), 5,365 MiB at peak, so 3,507 MiB for the system, of which PyTorch held 1,569 MiB. RAM peak 2,440 MiB for our process plus Ollama. A browser was open during the run.
+Memory: GPU 1,858 MiB before loading (other programs), 5,365 MiB at peak, so 3,507 MiB for the system, of which PyTorch held 1,569 MiB. RAM peak 2,440 MiB for my process plus Ollama. A browser was open during the run.
 A mistake found by measuring: the first version read `nvidia-smi` and the process list twice a second from a second thread. That made the pipeline itself slower: state 1,147 / 1,726 ms, and the text model's p95 was 876 ms instead of 20. Memory is now read between turns only. Before: state p50 1,147 ms. After: 576 ms.
 Tradeoff: reading memory between turns can miss a short spike inside a turn. PyTorch's own peak counter (1,569 MiB) does not have that gap.
 
@@ -251,14 +251,14 @@ Decision: `fusion.conflict_min_conf: 0.5`. Both models must give their own top l
 Tradeoff: real mismatches where the audio model is only moderately sure are now missed. The threshold was chosen from a handful of live turns, not tuned on data.
 
 ## 2026-10-13: Fresh-clone check
-Context: a reviewer starts from a clone, not from our working folder.
+Context: a reviewer starts from a clone, not from my working folder.
 What was done: the repository was cloned into a new folder and every README step was followed in a new Python 3.11 environment: PyTorch, `requirements.txt`, `pip install -e .`, the spaCy model, `fetch_models.py`, `ollama pull`, `pytest`, audio extraction, row counts, feature caching, text training, audio head training, alpha tuning, `final_eval.py --split dev`, one replayed clip, and `count_params.py`. The data folders in the config were the existing ones, so extraction and caching found their outputs and skipped. The test split was not scored again.
 Result: every step ran. 117 tests passed in the new environment. The clone held only the public files. The whole run took 22 minutes, 10 of them training the text model while another program shared the GPU.
 Reproducibility of the models from the same seed: the audio head came out identical (best epoch 17, dev 0.502 / 0.361). The text model matched in epoch 1 (0.5913) and then drifted slightly: best dev 0.6179 / 0.4835 against 0.6150 / 0.4792 in the original run. Alpha was 0.45 again, with fused dev 0.6301 against 0.6346. The parameter count was the same, 2,088,681,413.
-Tradeoff: fine-tuning on the GPU is not bit-for-bit repeatable, so a reviewer who retrains should expect dev scores within about 0.005 of ours, not the same digits.
+Tradeoff: fine-tuning on the GPU is not bit-for-bit repeatable, so a reviewer who retrains should expect dev scores within about 0.005 of mine, not the same digits.
 
 ## 2026-10-13: A local web page for the robot (mock mode first)
-Context: the terminal scripts show the state and the reply, but a character robot is easier to judge when the emotion is visible. Earlier the plan left a web UI out for time; blocks A to C finished early enough to add one.
+Context: the terminal scripts show the state and the reply, but a character robot is easier to judge when the emotion is visible. I first left a web UI out for time; the core track finished early enough to add one.
 Decision: a `ui/` folder with a FastAPI server (static files, `/clips`, one WebSocket at `/ws`) and a page in plain HTML, CSS, and JavaScript with no build step. The page is a plain terminal-style screen (black, white monospace, labels in square brackets): the current emotion as one large line, the conversation as a log, and an "under the hood" panel with the text, audio, and fused probabilities and the timings. A first version had an animated character with a warm palette; it was replaced by this simpler look the same day. The page only talks to a `PipelineAdapter` interface. `MockPipeline` fakes a full turn; `RealPipeline` is a stub, so the existing pipeline code is untouched. Microphone audio is converted in the browser to 16 kHz frames of 512 samples, the size the voice detector expects.
 Checked in a headless browser in mock mode: status changes, transcript, three bar groups, streamed reply, timing rows. No console errors. Every request went to 127.0.0.1. No horizontal scrolling at 375 px wide.
 Dependencies: `fastapi` 0.143.0, `uvicorn` 0.54.0, `websockets` 17.2. They are only needed for the page, not for the scripts.
@@ -273,12 +273,12 @@ Checked: through the WebSocket in real mode, two dev clips and one push-to-talk 
 Tradeoff: push-to-talk has no endpointing, so the page does not show off the endpointer on live speech; `scripts/live.py` does. The first press loses the first words while the browser sets up the microphone. The page timings are single turns, not the benchmark.
 
 ## 2026-10-13: Audit of the weighting choices and of the live path (dev only)
-Context: before the write-up we checked that the class weights, the fusion weight, and the criteria behind them hold up, and why a sample labelled fear came out as neutral in the web page. Everything here uses the dev split. The shipped checkpoints, alpha, and the test scores did not change.
+Context: before the write-up I checked that the class weights, the fusion weight, and the criteria behind them hold up, and why a sample labelled fear came out as neutral in the web page. Everything here uses the dev split. The shipped checkpoints, alpha, and the test scores did not change.
 Confirmed:
 - `scripts/final_eval.py --split dev` reproduces the saved numbers exactly (text 0.6150 / 0.4792, audio 0.5000 / 0.3582, fused 0.6346 / 0.4951), so the checkpoints on disk are the reported ones.
 - The class weights are computed from train counts only and match the table (0.40 for neutral to 1.66 for fear, a ratio of 4.2; full inverse frequency gives 17.6).
 - Audio head, three seeds per scheme, dev weighted / macro F1: no weights 0.474 to 0.479 / 0.303 to 0.317 (fear F1 0.00 in all three); `sqrt_inv` 0.489 to 0.502 / 0.353 to 0.361; `inv` 0.419 to 0.435 / 0.314 to 0.339. `sqrt_inv` is the best of the three on both scores in every seed.
-- Text model, one seed per scheme (two extra training runs written to `runs/audit/`, the shipped checkpoint untouched), best dev weighted / macro F1: no weights 0.608 / 0.456 (fear F1 0.12); `sqrt_inv` 0.615 / 0.479 (fear 0.28); `inv` 0.590 / 0.474 (fear 0.26). `sqrt_inv` is the best of the three on both scores. Its lead over no weights in weighted F1 (0.007) is about the size of the seed-to-seed drift we measured (0.005); the lead in macro F1 (0.023) is larger.
+- Text model, one seed per scheme (two extra training runs written to `runs/audit/`, the shipped checkpoint untouched), best dev weighted / macro F1: no weights 0.608 / 0.456 (fear F1 0.12); `sqrt_inv` 0.615 / 0.479 (fear 0.28); `inv` 0.590 / 0.474 (fear 0.26). `sqrt_inv` is the best of the three on both scores. Its lead over no weights in weighted F1 (0.007) is about the size of the seed-to-seed drift I measured (0.005); the lead in macro F1 (0.023) is larger.
 - Fusion on dev: +0.0196 weighted F1 over text. Resampling the 1,109 dev rows 2,000 times gives a 95% interval of +0.002 to +0.037, and fusion is ahead in 98% of resamples. Alpha 0.45 is the best value in 72% of resamples (0.70 in 15%). So the dev gain is real but small, and its lower end is close to zero, which fits the test result (-0.0015).
 - The live audio branch equals the offline one: same top label on 248 of 248 clips, largest probability difference 0.0000.
 Found:
@@ -306,7 +306,7 @@ Decisions:
 - `pipeline.warm_during_silence: true`: while the endpointer is inside a turn and the current frame is silent, the audio model runs on half a second of silence and the result is thrown away.
 - `asr.max_no_speech_prob: 0.75`: a turn whose every segment is above it gives an empty transcript, so no state and no reply.
 - `pipeline.end_silence_ms` stays 600. The rule was "at most 1 point more cut-offs than at 600"; 500 ms adds 2.7 points.
-A check that failed as written: the plan said the new recognition settings must give the same words as before on 98% of clips. Changing the compute type alone changes the words on 7.5% of clips, because greedy decoding flips on small numeric differences. The check was replaced by word error rate against the gold lines and F1 against the gold labels, both unchanged within noise.
+A check that failed as written: I had required that the new recognition settings give the same words as before on 98% of clips. Changing the compute type alone changes the words on 7.5% of clips, because greedy decoding flips on small numeric differences. The check was replaced by word error rate against the gold lines and F1 against the gold labels, both unchanged within noise.
 Benchmark, 50 turns, same clips and prompt, p50 / p95 in ms after the turn was judged over. Before: recognition 579 / 919, audio 469 / 550, state 596 / 934, first reply token 676 / 1,019, full reply 808 / 1,178, first sound 895 / 1,236. After: recognition 212 / 436, audio 24 / 35, state 253 / 489, first reply token 334 / 564, full reply 450 / 745, first sound 542 / 780. The state is ready within 600 ms on 98% of turns (50% before). GPU peak 4,508 MiB with 1,137 MiB used by other programs, so 3,371 MiB for the system (3,475 before). The numbers in the Oct 12 benchmark entry were measured with the earlier prompt and are replaced by these.
 Tradeoff: the GPU does throwaway work during pauses inside speech, up to 19 calls of about 20 ms per pause. Push-to-talk in the web page has no wait for silence, so it does not get this warm-up. The 608 ms wait still comes before every number above.
 
@@ -318,7 +318,7 @@ Measured, faces: found in 9,928 of 9,989 train clips, 1,103 of 1,112 dev clips, 
 Measured, dev: vision only 0.348 / 0.208 on rows with a face, 0.345 / 0.207 over all rows (majority 0.252 / 0.085), best epoch 17. Per class: neutral 0.53, joy 0.31, anger 0.27, sadness 0.23, surprise 0.11, disgust 0.00, fear 0.00. It predicts neutral for 667 of 1,099 rows. Layer weights peak at the last two ViT layers (0.143, 0.139; equal would be 0.077).
 Checked on dev before settling: (a) the ViT's own expression classifier with no MELD training, applied to the cached last-layer features: 0.257 / 0.171, so training the head on MELD is worth 0.09; (b) seven head variants (layer norm, z-scored inputs, lr 3e-4, dropout 0.5, last layer only), two seeds each: 0.344 to 0.361 best-epoch weighted F1, so the head is not the limit and the first one was kept.
 Decision, fusion: `tune_fusion3.py` searches every (text, audio, vision) weight triple on a 0.05 grid on dev weighted F1, smaller vision weight on ties. Rows with no face keep the two-model fusion with alpha 0.45, so a system without a camera is unchanged. Result: **(0.45, 0.55, 0.00)**, 0.6346, the same as text + audio. The best triple with any vision is (0.50, 0.20, 0.30) at 0.6332. Best dev score per vision weight: 0.635 at 0, then 0.629 to 0.633 from 0.05 to 0.5. Text + vision with one weight: 0.45 on text, dev 0.6273 (text alone 0.6150).
-We kept the weights the rule chose, with vision at 0, and did not pick a triple with vision in it afterwards: the differences are far below the noise we measured for fusion on dev (95% interval about 0.035 wide).
+I kept the weights the rule chose, with vision at 0, and did not pick a triple with vision in it afterwards: the differences are far below the noise I measured for fusion on dev (95% interval about 0.035 wide).
 Test, read a second time (Tue Oct 13, 19:41) only to add three rows, everything fixed on dev first: vision only **0.3557 / 0.1853**, text + vision **0.6283 / 0.4496**, text + audio + vision **0.6369 / 0.4588** (equal to the two-model fusion). The four earlier rows came out identical to the Oct 12 run (0.3127, 0.6384, 0.4747, 0.6369). The Oct 12 results file is kept as `runs/final_eval/test_oct12.json`.
 Decision, live: `Pipeline.push_image` takes one camera or video picture, finds the face, runs the ViT, and keeps the result with its arrival time. `process_turn` uses the faces that arrived while the turn was being spoken, averages them like the cached features, and runs the head. The state gains `views.vision`, `face_text_conflict` (same rule and threshold as the tone flag), and `faces_seen`. The reply note names a face that disagrees with the words ("your words sound joy, but your face looks sadness"). With the weights above the face does not move the fused label; it is a third view and a reason to check in.
 Who is right when the face flag fires on dev (both at least 0.5 sure, 23 of 1,099 rows, 2.1%): the words 48%, the face 22%, neither 30%. For the tone flag at 0.5 (83 rows): words 60%, tone 19%.
@@ -340,8 +340,8 @@ Tradeoff: fitted and checked on dev only; test was not read for this. The per-mo
 ## 2026-10-13: A different face head for a live camera
 Context: in front of a webcam the MELD-trained vision head read a smile as surprise. It was trained on TV shots where the largest face is often not the speaker and the label belongs to the utterance.
 Decision: `vision.live_head: expression`. For pictures from a live camera the face view is the ViT's own 7-way expression classifier (same checkpoint, 5,383 more parameters), averaged over the pictures of the turn. For pictures from a MELD clip's video the MELD-trained head is used, as before. `Pipeline.push_image(frame, from_camera)` carries the difference.
-What we know: on 120 dev clips the expression classifier scores 0.261 weighted F1 (accuracy 0.267, mean confidence 0.57) against 0.350 for our head, so on MELD it is worse, and when it was briefly used for the sample clips it raised false "face disagrees" flags (joy 0.71 on a sad line). That is why clips keep our head.
-What we do not know: how good it is on a webcam. There is no labelled webcam data here. In a headless browser with a dev clip as the camera it read a laughing face as joy 0.99.
+What I know: on 120 dev clips the expression classifier scores 0.261 weighted F1 (accuracy 0.267, mean confidence 0.57) against 0.350 for my head, so on MELD it is worse, and when it was briefly used for the sample clips it raised false "face disagrees" flags (joy 0.71 on a sad line). That is why clips keep my head.
+What I do not know: how good it is on a webcam. There is no labelled webcam data here. In a headless browser with a dev clip as the camera it read a laughing face as joy 0.99.
 It cannot change a reported score: the vision weight in the fusion is 0, so the face only appears as its own view and in the check-in.
 Parity check after the change: with the MELD head, the live path gave the cached top label on 120 of 120 dev clips, largest probability difference 0.0000. `scripts/final_eval.py --split dev` prints the same seven rows as before.
 
@@ -359,8 +359,8 @@ Measured first: a fixed script of 16 turns in five short conversations (good new
 Decision, prompt: the rules now say what the robot is (a companion next to the person, not an assistant) and what a good answer contains (one concrete detail from what was said, a reaction that fits, at most one question about it). Four example turns are given as if they had happened. How the person seems moved from a note after their words to one short line in round brackets before them ("They seem happy.", "Their words sound calm, but their voice sounds sad."), and a calm person gets "Nothing stands out in how they sound." so there is nothing to comment on.
 Decision, stop phrases: telling the 1.5B model what not to say made it say it more often (6 of 16). Instead `reply.stop` lists the openings of the stock endings ("How can I", "Is there anything", "Let me know", ...) and generation ends where one would begin. The useful first sentence stays.
 A larger reply model was tried and not kept: `llama3.2:3b` gave the most natural replies ("Classic joke! Did you tell that one to anyone recently?") and the parameter total would still be 3.84 billion, under the cap. But it needs 2,436 MiB of GPU memory against 1,112, and with everything loaded the card was at 5,730 of 6,144 MiB. The benchmark got worse everywhere: speech recognition 722 / 1,876 ms (241 / 453 with the small model), state 765 / 1,934, first sound 1,154 / 2,266. The rule set beforehand was a first sound under 1 s at p50, so the 1.5B model stays. `reply.model` is one line in the config for a card with more memory.
-Example with the kept setup: "The train was late again and I missed my meeting." gets "The train being late is no fun. Did you get a chance to reschedule?" (before: "I understand you're frustrated. Maybe we could look for another time.").
-Tradeoff: a reply that begins with a stock phrase comes out empty; this did not happen in the 16 turns. The script is ours and small; reply quality on real conversations is not scored. The model still gives advice sometimes ("You should start studying now").
+Example with the kept setup: "The train was late again and I missed my meeting." gets "The train being late is no fun. Did you get a chance to reschedule?" (before: "I understand you're frustrated. Maybe I could look for another time.").
+Tradeoff: a reply that begins with a stock phrase comes out empty; this did not happen in the 16 turns. The script is mine and small; reply quality on real conversations is not scored. The model still gives advice sometimes ("You should start studying now").
 
 ## 2026-10-13: Talking over the robot, loading as a state, and warm-up for push-to-talk
 Context: the page answered "still busy, try again in a moment" when the talk button was pressed while the robot was still speaking, or while the models were loading.
@@ -394,8 +394,8 @@ Also measured: the reply model repeated the person's sentence back word for word
 
 ## 2026-10-13: A better expression classifier for the live camera
 Context: with the ViT's own FER2013 classifier on the live camera (the entry "A different face head for a live camera" above), a neutral face and a sad face both came out as joy at the webcam.
-Checked first, on 259 dev clips with their MELD labels as a rough yardstick: the classifier says joy for 82 clips when 34 are joy, says joy on 27% of the true-neutral clips, and never says surprise (accuracy 0.286, weighted F1 0.272, macro F1 0.171). It was trained on small grey face crops, so we tried feeding it that: margins of 0.25, 0.10, 0.00 and -0.08 around the face box, each in colour and in grey. None helped (accuracy 0.22 to 0.29; the setting we had was the best of the eight). So the crop is not the problem, the model is.
-Decision: `vision.expression_file`, the HSEmotion EfficientNet-B0 trained on AffectNet (in-the-wild colour photos, 8 classes; contempt is dropped and the other seven rescaled), run with ONNX Runtime on the CPU, with a margin of 0.10. On the same 259 clips: accuracy 0.266, weighted F1 0.275, macro F1 0.239, joy on true-neutral clips 14%, 42 clips called joy, and every label is used. It takes 11.6 ms a face on the CPU and no GPU memory. The ViT is loaded without its classifier again and only feeds our MELD head.
+Checked first, on 259 dev clips with their MELD labels as a rough yardstick: the classifier says joy for 82 clips when 34 are joy, says joy on 27% of the true-neutral clips, and never says surprise (accuracy 0.286, weighted F1 0.272, macro F1 0.171). It was trained on small grey face crops, so I tried feeding it that: margins of 0.25, 0.10, 0.00 and -0.08 around the face box, each in colour and in grey. None helped (accuracy 0.22 to 0.29; the setting I had was the best of the eight). So the crop is not the problem, the model is.
+Decision: `vision.expression_file`, the HSEmotion EfficientNet-B0 trained on AffectNet (in-the-wild colour photos, 8 classes; contempt is dropped and the other seven rescaled), run with ONNX Runtime on the CPU, with a margin of 0.10. On the same 259 clips: accuracy 0.266, weighted F1 0.275, macro F1 0.239, joy on true-neutral clips 14%, 42 clips called joy, and every label is used. It takes 11.6 ms a face on the CPU and no GPU memory. The ViT is loaded without its classifier again and only feeds my MELD head.
 What this does and does not show: on MELD the new classifier is not more accurate overall, it is less biased towards joy. Whether it is right on a webcam is still not measured; there is no labelled webcam data here. In a headless browser with a dev clip as the camera it read faces as joy 0.52 and surprise 0.55 where the old one said joy 0.99.
 Parity after the change: the live MELD-head path gives the cached top label on 120 of 120 dev clips, and `final_eval.py --split dev` prints the same seven rows.
 Dependencies: `onnxruntime` 1.31.0, already installed as a dependency of faster-whisper and now listed. The model file (16 MB, Apache 2.0) is fetched by `scripts/fetch_models.py`. Parameters: 3,996,789 counted from the ONNX file; the total is 2,178,728,655, 36.3% of the cap.
@@ -405,6 +405,12 @@ Tradeoff: a third pretrained vision model in the system, used only for the camer
 Context: a happy sentence said in an angry voice with an angry face came out as joy 0.71. The question was whether the fusion leans on the words too much.
 Measured on dev (rows with audio and a face): when the voice and the face give the same top label and the words give another (150 rows), the words are right 47% of the time and the voice-and-face pair 31%; the fusion as it is gets 54%. Counting only pairs that are not neutral (51 rows): words 45%, pair 35%, fusion 55%. A rule that follows the pair lowers dev weighted F1 from 0.6346 to 0.6007 (always), 0.6291 (pair not neutral), or 0.6312 (only when the words are under 0.6 sure). For comparison, when words and voice agree against the face (287 rows) they are right 71% and the face 11%.
 Decision: the fused label and the weights stay. On MELD the words are the best single guide even when the other two agree against them. But those rows are where the fusion is least reliable (55% right against 66% overall), so they are flagged: `two_against_words` in `models/fusion.py` is true when voice and face share a top label that is not neutral and the words differ, and then both conflict flags are set even if neither model reaches the 0.5 confidence threshold. The robot is told what each one says and checks in instead of assuming, and the page says, for example, "words say joy, but voice and face both say anger".
-Tradeoff: more check-ins (51 of 1,088 dev rows, 4.7%, on top of the existing flags). MELD has little sarcasm, so it cannot tell us what the right label is for a happy sentence said angrily; this rule only makes the robot notice it.
+Tradeoff: more check-ins (51 of 1,088 dev rows, 4.7%, on top of the existing flags). MELD has little sarcasm, so it cannot tell me what the right label is for a happy sentence said angrily; this rule only makes the robot notice it.
 A bug found while checking this: with the page open in two browser tabs, one tab's camera pictures arrived in the middle of a sample clip played in the other, and the turn failed because the two kinds of face (camera and clip) cannot be averaged together. Camera pictures are now ignored while a clip plays, and a turn only ever uses pictures from one source. One server still means one conversation: two tabs talking at once share it.
 The disgust sample was changed. Every dev disgust clip was played alone through the live path: 1 of 22 comes out as disgust (`dia23_utt6`, "I'm an idiot.", disgust 0.32, carried by the words model at 0.54). Most of the others come out neutral, and their words give little away ("That would be no."). The sample list in the config now uses that clip, by the same rule as the others: a clip the live path gets right if one exists. For fear it is 7 of 40.
+
+## 2026-10-13: Trained models shipped as a release download
+Context: the reviewer has to run the page and the models the way I do, without downloading MELD (10.9 GB) and retraining for an hour.
+Decision: `scripts/package_models.py` packs every file the live system loads that I trained or tuned (the text model, the audio and vision heads, alpha, the three-model weights, the temperature) into `meldrt-models.zip` (480 MiB), and the page's sample clips into `meldrt-samples.zip` (6 MiB). Both go on a GitHub release tagged `v1.0`. `scripts/fetch_models.py` downloads and unpacks them after the pretrained models: by the plain link for a public repository, by `gh release download` for a private one, or from zips downloaded by hand (`--zip`). It skips them when the files are already there. Weights stay out of git; only the release holds them. No new dependency (the standard library's `zipfile` and `urllib`).
+Checked: a fresh clone with no `checkpoints/`, `runs/`, or `ui/clips/`, filled only from the two zips, started the page with `HF_HUB_OFFLINE=1` and gave the same results as my working folder (joy 0.88 on the joy sample, neutral / joy / neutral on the three-line dialogue), and a live turn with the camera.
+Tradeoff: the sample clips are nine short MELD dev clips (Friends footage) put on the release; MELD is distributed by its authors under GPL-3.0. Without them the live mode still works and `make_samples.py` rebuilds them from a MELD copy.

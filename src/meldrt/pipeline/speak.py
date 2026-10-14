@@ -83,7 +83,7 @@ class Speaker:
     def synthesize_loop(self):
         while True:
             sentence = self.sentences.get()
-            # if a sentence fails (for example the GPU runs out of memory) we skip it; without the
+            # if a sentence fails (for example the GPU runs out of memory) it is skipped; without the
             # finally, wait() would block forever and the robot would stop listening
             try:
                 chunks = [result.audio for result in self.tts(sentence, voice=self.voice, speed=self.speed)]

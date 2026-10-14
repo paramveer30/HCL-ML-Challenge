@@ -24,6 +24,8 @@ const log = $("log");
 const logBody = $("log-body");     // the part of the conversation box that scrolls
 $("author").textContent = CONFIG.AUTHOR;
 $("email").textContent = CONFIG.EMAIL;
+$("website").href = CONFIG.WEBSITE;
+$("linkedin").href = CONFIG.LINKEDIN;
 $("title").textContent = CONFIG.TITLE;
 $("org").textContent = CONFIG.ORG;
 

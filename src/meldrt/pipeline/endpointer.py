@@ -4,7 +4,7 @@ import math
 
 class Endpointer:
     def __init__(self, frame_ms=32, start_ms=250, end_silence_ms=600, max_turn_s=15):
-        # round up so we never start or end early; round down so a turn never exceeds the cap
+        # round up so a turn never starts or ends early; round down so a turn never exceeds the cap
         self.start_frames = math.ceil(start_ms / frame_ms)          # 8 frames = 256 ms
         self.end_frames = math.ceil(end_silence_ms / frame_ms)      # 19 frames = 608 ms
         self.max_frames = int(max_turn_s * 1000 // frame_ms)        # 468 frames = 14.976 s

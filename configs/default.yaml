@@ -47,8 +47,8 @@ vision:
   min_face_px: 40                    # smaller faces are ignored: too few pixels to read an expression
   face_margin: 0.25                  # extra room around the face box, as a share of its size
   image_size: 224
-  live_head: expression              # face view for a live camera: expression (the classifier below) or meld (our head).
-                                     # pictures from a MELD clip's video always use our head
+  live_head: expression              # face view for a live camera: expression (the classifier below) or meld (the MELD-trained head).
+                                     # pictures from a MELD clip's video always use the MELD-trained head
   expression_file: cache/enet_b0_8_best_vgaf.onnx    # HSEmotion EfficientNet-B0 trained on AffectNet, fetched by fetch_models.py
   expression_url: https://github.com/HSE-asavchenko/face-emotion-recognition/raw/main/models/affectnet_emotions/onnx/enet_b0_8_best_vgaf.onnx
   expression_margin: 0.1             # room around the face box for the expression classifier (see DECISIONS.md)
@@ -68,6 +68,12 @@ fusion:
   alpha_step: 0.05                   # grid for the weight on text, tuned on dev
   conflict_min_conf: 0.5             # both models must be at least this sure for a tone/text conflict
   run_dir: runs/fusion
+
+release:                             # where scripts/fetch_models.py finds the trained models and the sample clips
+  repo: paramveer30/HCL-ML-Challenge
+  tag: v1.0
+  models_asset: meldrt-models.zip    # built by scripts/package_models.py
+  samples_asset: meldrt-samples.zip
 
 samples:                             # the sample clips of the web page, built by scripts/make_samples.py from dev
   dir: ui/clips

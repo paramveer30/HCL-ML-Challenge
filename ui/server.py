@@ -16,7 +16,7 @@ from ui.pipeline import PagePipeline
 STATIC_DIR = Path(__file__).parent / "static"
 CHUNK_BYTES = 1024          # 512 samples of 16-bit audio
 
-app = FastAPI(title="MELD-RT")
+app = FastAPI(title="Human Computer Lab ML Challenge")
 pipeline = PagePipeline()
 
 

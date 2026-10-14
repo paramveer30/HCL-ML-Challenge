@@ -100,7 +100,7 @@ class Pipeline:
         return read_timed_frames(path, self.frames_per_clip, self.max_turn_s)
 
     def finish_turn(self):
-        # drop the silence that told us the turn was over
+        # drop the silence that showed the turn was over
         trailing = self.endpointer.silence_run
         frames = self.turn[: len(self.turn) - trailing]
         self.turn = []

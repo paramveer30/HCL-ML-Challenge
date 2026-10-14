@@ -1,4 +1,4 @@
-"""One place that seeds every random number generator we use."""
+"""One place that seeds every random number generator the project uses."""
 import random
 
 import numpy as np

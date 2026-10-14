@@ -13,7 +13,7 @@ class Asr:
         segments, _ = self.model.transcribe(wav, language="en", beam_size=self.beam_size)
         segments = list(segments)
         # on silence or noise Whisper still writes a word (usually "you"), but it also says
-        # the audio is probably not speech; we believe that and drop the turn
+        # the audio is probably not speech, so the turn is dropped
         if all(segment.no_speech_prob > self.max_no_speech_prob for segment in segments):
             return ""
         return " ".join(segment.text.strip() for segment in segments)
